@@ -28,9 +28,21 @@ export function getWebhookHandler() {
         body: JSON.stringify({ message, userId }),
       });
 
-      const data = (await response.json()) as { reply?: string };
-      const reply = data.reply?.trim() || "No response.";
-      await ctx.reply(reply);
+      const data = (await response.json()) as {
+        reply?: string;
+        imageUrl?: string;
+      };
+
+      if (data.imageUrl) {
+        // Send image
+        await ctx.replyWithPhoto(data.imageUrl, {
+          caption: data.reply || undefined,
+        });
+      } else {
+        // Send text
+        const reply = data.reply?.trim() || "No response.";
+        await ctx.reply(reply);
+      }
     } catch {
       await ctx.reply("Failed to reach the API.");
     }

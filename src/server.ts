@@ -20,8 +20,11 @@ const app = new Elysia()
         return { reply: "User ID is required." };
       }
 
-      const reply = await askAI(message, userId);
-      return { reply };
+      const result = await askAI(message, userId);
+      return {
+        reply: result.text || "No response.",
+        imageUrl: result.imageUrl,
+      };
     },
     {
       body: t.Object({
