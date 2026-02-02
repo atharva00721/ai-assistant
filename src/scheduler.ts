@@ -47,10 +47,14 @@ async function checkAndSendReminders() {
   }
 }
 
-// Run every minute
-Bun.cron("* * * * *", checkAndSendReminders);
+// Run every minute using setInterval (60 seconds)
+// Note: Bun.cron exists but may not be in @types/bun yet
+const INTERVAL_MS = 60 * 1000; // 60 seconds
 
 console.log("Reminder scheduler started - checking every minute");
 
-// Keep the process alive
-setInterval(() => {}, 1000 * 60 * 60); // Keep alive for 1 hour intervals
+// Run immediately on startup
+checkAndSendReminders();
+
+// Then run every minute
+setInterval(checkAndSendReminders, INTERVAL_MS);
