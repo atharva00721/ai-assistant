@@ -4,11 +4,16 @@ A Telegram AI assistant with reminder and scheduled task functionality.
 
 ## Features
 
-- AI-powered conversations using OpenAI-compatible API
-- Reminder and scheduled task detection
-- Automatic reminder notifications via Telegram
-- PostgreSQL database for persistent storage
-- Cron-based scheduler for reminder delivery
+- 🤖 AI-powered conversations using OpenAI-compatible API
+- 🔔 Reminder and scheduled task detection
+- 📋 List upcoming reminders with `/list`
+- ❌ Cancel reminders with `/cancel <id>`
+- ⏰ Snooze functionality with interactive buttons
+- 🧠 Advanced natural language time parsing
+- ✨ Beautiful message formatting
+- 📱 Automatic reminder notifications via Telegram
+- 💾 PostgreSQL database for persistent storage
+- ⚡ Efficient scheduler for reminder delivery
 
 ## Stack
 
@@ -69,12 +74,34 @@ Send messages to your Telegram bot like:
 - "Remind me to call mom at 3pm tomorrow"
 - "Set a reminder for my meeting in 2 hours"
 - "Schedule a task to buy groceries at 5pm"
+- "In 10 minutes remind me to check the oven"
+- "Don't let me forget to take medicine at noon"
 
-The AI will detect the intent and create a reminder. You'll receive a notification via Telegram at the scheduled time.
+The AI will detect the intent and create a reminder. You'll receive a notification via Telegram at the scheduled time with interactive snooze buttons.
+
+### Managing Reminders
+
+**List all reminders**:
+```
+/list
+```
+
+**Cancel a reminder**:
+```
+/cancel <id>
+```
+
+**Snooze a reminder**: When you receive a reminder, use the inline buttons to snooze for 10 minutes or 1 hour.
 
 ### Regular Conversations
 
 Send any other message to have a normal conversation with the AI assistant.
+
+## Quick Commands
+
+- `/list` - Show all upcoming reminders
+- `/cancel <id>` - Cancel a specific reminder
+- Normal text - Chat with AI or create reminders
 
 ## Project Structure
 
