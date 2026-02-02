@@ -11,6 +11,8 @@ interface Message {
 
 const conversations = new Map<string, Message[]>();
 const MAX_HISTORY = 20; // Keep last 20 messages per user
+const SYSTEM_PROMPT =
+  "You are a friendly texting buddy and assistant. Keep replies warm, helpful, and concise. Ask brief follow-up questions when needed, use a casual tone, and avoid sounding overly formal. Do not use markdown or formatting symbols like *, _, or backticks.";
 
 function detectImageRequest(message: string): boolean {
   const imageKeywords = [
@@ -64,6 +66,7 @@ export async function askAI(
 
   const { text, sources } = await generateText({
     model: textModel,
+    system: SYSTEM_PROMPT,
     tools: {
       google_search: google.tools.googleSearch({}),
     },
