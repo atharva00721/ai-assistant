@@ -36,14 +36,35 @@ If the user wants to set a reminder, respond with ONLY valid JSON in this exact 
   "time": "ISO 8601 datetime string"
 }
 
+Time parsing examples:
+- "in 5 minutes" -> add 5 minutes to current time
+- "in 2 hours" -> add 2 hours to current time
+- "at 3pm" / "at 15:00" -> today at that time (or tomorrow if time passed)
+- "tomorrow at 9am" -> next day at 9am
+- "at 5pm tomorrow" -> next day at 5pm
+- "next Monday" -> upcoming Monday
+- "in 30 seconds" -> add 30 seconds
+- "tonight at 8" -> today at 8pm
+- "noon" or "midnight" -> today at 12pm or 12am
+
+Message extraction (what to remind about):
+- Extract the core action/task, keep it concise
+- "Remind me to call mom" -> "call mom"
+- "Don't forget to take medicine" -> "take medicine"
+- "I need to submit the report by 5pm" -> "submit the report"
+
 Examples:
 - "Remind me to call mom at 3pm tomorrow" -> {"type": "reminder", "message": "call mom", "time": "2026-02-03T15:00:00Z"}
 - "Set a reminder for my meeting in 2 hours" -> {"type": "reminder", "message": "meeting", "time": "2026-02-02T16:30:00Z"}
 - "Schedule a task to buy groceries at 5pm" -> {"type": "reminder", "message": "buy groceries", "time": "2026-02-02T17:00:00Z"}
+- "In 10 minutes remind me to check the oven" -> {"type": "reminder", "message": "check the oven", "time": "2026-02-02T14:10:00Z"}
+- "Don't let me forget to call John at noon" -> {"type": "reminder", "message": "call John", "time": "2026-02-02T12:00:00Z"}
+- "I need to take my medicine in 30 minutes" -> {"type": "reminder", "message": "take medicine", "time": "2026-02-02T14:30:00Z"}
 
 If this is NOT a reminder request, respond with the text "NOT_REMINDER".
 
 Current time: ${new Date().toISOString()}
+Current day: ${new Date().toLocaleDateString('en-US', { weekday: 'long' })}
 User message: `;
 
 function detectImageRequest(message: string): boolean {

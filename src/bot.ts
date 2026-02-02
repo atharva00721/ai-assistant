@@ -71,6 +71,49 @@ export function getWebhookHandler() {
     }
   });
 
+  // Handle callback queries (inline button presses)
+  bot.on("callback_query:data", async (ctx) => {
+    const callbackData = ctx.callbackQuery.data;
+    const userId = ctx.from?.id.toString();
+    
+    if (!userId) return;
+
+    try {
+      if (callbackData.startsWith("snooze_")) {
+        // Parse: snooze_<reminderId>_<minutes>
+        const parts = callbackData.split("_");
+        const reminderId = parseInt(parts[1] || "0");
+        const minutes = parseInt(parts[2] || "10");
+
+        const response = await fetch(`${apiBaseUrl}/snooze`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ reminderId, userId, minutes }),
+        });
+
+        const data = (await response.json()) as { success: boolean; message: string };
+        
+        if (data.success) {
+          await ctx.answerCallbackQuery({ text: `⏰ Snoozed for ${minutes} minutes!` });
+          await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
+          await ctx.reply(`⏰ Reminder snoozed for ${minutes} minutes. I'll remind you again!`);
+        } else {
+          await ctx.answerCallbackQuery({ text: "Failed to snooze reminder" });
+        }
+      } else if (callbackData.startsWith("done_")) {
+        // Parse: done_<reminderId>
+        const reminderId = parseInt(callbackData.split("_")[1] || "0");
+        
+        await ctx.answerCallbackQuery({ text: "✅ Reminder marked as done!" });
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
+        await ctx.reply("✅ Great! Reminder completed.");
+      }
+    } catch (error) {
+      console.error("Error handling callback:", error);
+      await ctx.answerCallbackQuery({ text: "Something went wrong" });
+    }
+  });
+
   cachedHandler = webhookCallback(bot, "elysia") as (ctx: any) => Promise<any>;
   return cachedHandler;
 }

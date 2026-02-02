@@ -24,10 +24,33 @@ async function checkAndSendReminders() {
 
     for (const reminder of dueReminders) {
       try {
-        // Send reminder message via Telegram
+        const scheduledTime = new Date(reminder.remindAt);
+        const timeStr = scheduledTime.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        });
+
+        // Send reminder message via Telegram with inline keyboard
         await bot.api.sendMessage(
           reminder.userId,
-          `🔔 Reminder: ${reminder.message}`
+          `🔔 *REMINDER*\n\n"${reminder.message}"\n\n📅 Scheduled: ${timeStr}\n🆔 ID: ${reminder.id}`,
+          {
+            parse_mode: "Markdown",
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  { text: "⏰ Snooze 10 min", callback_data: `snooze_${reminder.id}_10` },
+                  { text: "⏰ Snooze 1 hour", callback_data: `snooze_${reminder.id}_60` },
+                ],
+                [
+                  { text: "✅ Done", callback_data: `done_${reminder.id}` },
+                ]
+              ]
+            }
+          }
         );
 
         // Mark as done
