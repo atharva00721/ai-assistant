@@ -18,11 +18,14 @@ export function getWebhookHandler() {
     const message = ctx.message.text.trim();
     if (!message) return;
 
+    const userId = ctx.from?.id.toString();
+    if (!userId) return;
+
     try {
       const response = await fetch(`${apiBaseUrl}/ask`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, userId }),
       });
 
       const data = (await response.json()) as { reply?: string };

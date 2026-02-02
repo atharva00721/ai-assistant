@@ -8,17 +8,25 @@ const app = new Elysia()
     "/ask",
     async ({ body, set }) => {
       const message = body.message?.trim();
+      const userId = body.userId?.trim();
+      
       if (!message) {
         set.status = 400;
         return { reply: "Message is required." };
       }
 
-      const reply = await askAI(message);
+      if (!userId) {
+        set.status = 400;
+        return { reply: "User ID is required." };
+      }
+
+      const reply = await askAI(message, userId);
       return { reply };
     },
     {
       body: t.Object({
         message: t.String(),
+        userId: t.String(),
       }),
     },
   )
