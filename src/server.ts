@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
-import { askAI } from "./ai";
-import { getWebhookHandler } from "./bot";
+import { askAI } from "./ai.js";
+import { getWebhookHandler } from "./bot.js";
 import pkg from "../package.json" assert { type: "json" };
 
 const app = new Elysia()
