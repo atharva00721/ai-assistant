@@ -1,8 +1,16 @@
-import { google } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 
-const textModel = google("gemini-3-flash-preview");
-const imageModel = google("gemini-2.5-flash-image");
+const apiKey = Bun.env.ANANNAS_API_KEY;
+if (!apiKey) {
+  throw new Error("ANANNAS_API_KEY is required.");
+}
+
+const openai = createOpenAI({
+  baseURL: "https://api.anannas.ai/v1",
+  apiKey,
+});
+const textModel = openai("anthropic/claude-3-sonnet");
 
 interface Message {
   role: "user" | "assistant";
@@ -36,27 +44,12 @@ export async function askAI(
   const isImageRequest = detectImageRequest(message);
 
   if (isImageRequest) {
-    // Use image generation model
-    try {
-      const result = await generateText({
-        model: imageModel,
-        prompt: message.replace(/^\/image\s*/i, "").trim(),
-      });
-
-      // Check if response contains image data
-      // Note: Vercel AI SDK may return files in result.files or embedded data
-      // For now, return text response with note about image generation
-      return {
-        text: result.text || "Image generated (implementation pending for file extraction)",
-      };
-    } catch (error) {
-      return {
-        text: "Image generation failed. Please try a text request instead.",
-      };
-    }
+    return {
+      text: "Image generation is not available right now. Ask me for text instead.",
+    };
   }
 
-  // Standard text conversation with Google Search
+  // Standard text conversation
   let history = conversations.get(userId) || [];
   history.push({ role: "user", content: message });
 
@@ -64,12 +57,9 @@ export async function askAI(
     .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
     .join("\n");
 
-  const { text, sources } = await generateText({
+  const { text } = await generateText({
     model: textModel,
     system: SYSTEM_PROMPT,
-    tools: {
-      google_search: google.tools.googleSearch({}),
-    },
     prompt,
   });
 
@@ -81,7 +71,7 @@ export async function askAI(
 
   conversations.set(userId, history);
 
-  return { text, sources };
+  return { text };
 }
 
 export function clearHistory(userId: string): void {
