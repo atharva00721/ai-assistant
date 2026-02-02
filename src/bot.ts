@@ -28,6 +28,13 @@ export function getWebhookHandler() {
         body: JSON.stringify({ message, userId }),
       });
 
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(
+          `API ${response.status} ${response.statusText}: ${errorBody}`,
+        );
+      }
+
       const data = (await response.json()) as {
         reply?: string;
         imageUrl?: string;
@@ -53,8 +60,14 @@ export function getWebhookHandler() {
         
         await ctx.reply(reply);
       }
-    } catch {
-      await ctx.reply("Failed to reach the API.");
+    } catch (error) {
+      console.error("API request failed", {
+        apiBaseUrl,
+        error,
+      });
+      await ctx.reply(
+        "API request failed. Check API_BASE_URL and server logs.",
+      );
     }
   });
 
