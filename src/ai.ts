@@ -6,8 +6,13 @@ if (!apiKey) {
   throw new Error("ANANNAS_API_KEY is required.");
 }
 
+const baseURL = Bun.env.OPENAI_BASE_URL;
+if (!baseURL) {
+  throw new Error("OPENAI_BASE_URL is required.");
+}
+
 const openai = createOpenAI({
-  baseURL: "https://api.anannas.ai/v1",
+  baseURL,
   apiKey,
 });
 const textModel = openai.chat("openai-gpt-oss-20b-1-0");
