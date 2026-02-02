@@ -1,7 +1,7 @@
 import { google } from "@ai-sdk/google";
 import { generateText } from "ai";
 
-const model = google("gemini-1.5-flash");
+const model = google("gemini-3-flash-preview");
 
 interface Message {
   role: "user" | "assistant";
