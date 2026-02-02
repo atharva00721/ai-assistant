@@ -30,7 +30,7 @@ function detectImageRequest(message: string): boolean {
 export async function askAI(
   message: string,
   userId: string,
-): Promise<{ text?: string; imageUrl?: string }> {
+): Promise<{ text?: string; imageUrl?: string; sources?: any[] }> {
   const isImageRequest = detectImageRequest(message);
 
   if (isImageRequest) {
@@ -54,7 +54,7 @@ export async function askAI(
     }
   }
 
-  // Standard text conversation
+  // Standard text conversation with Google Search
   let history = conversations.get(userId) || [];
   history.push({ role: "user", content: message });
 
@@ -62,8 +62,11 @@ export async function askAI(
     .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
     .join("\n");
 
-  const { text } = await generateText({
+  const { text, sources } = await generateText({
     model: textModel,
+    tools: {
+      google_search: google.tools.googleSearch({}),
+    },
     prompt,
   });
 
@@ -75,7 +78,7 @@ export async function askAI(
 
   conversations.set(userId, history);
 
-  return { text };
+  return { text, sources };
 }
 
 export function clearHistory(userId: string): void {

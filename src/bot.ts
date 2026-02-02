@@ -31,6 +31,7 @@ export function getWebhookHandler() {
       const data = (await response.json()) as {
         reply?: string;
         imageUrl?: string;
+        sources?: Array<{ url: string; title?: string }>;
       };
 
       if (data.imageUrl) {
@@ -39,8 +40,17 @@ export function getWebhookHandler() {
           caption: data.reply || undefined,
         });
       } else {
-        // Send text
-        const reply = data.reply?.trim() || "No response.";
+        // Send text with optional sources
+        let reply = data.reply?.trim() || "No response.";
+        
+        // Append sources if available
+        if (data.sources && data.sources.length > 0) {
+          reply += "\n\n📚 Sources:\n";
+          data.sources.slice(0, 3).forEach((source, idx) => {
+            reply += `${idx + 1}. ${source.title || source.url}\n`;
+          });
+        }
+        
         await ctx.reply(reply);
       }
     } catch {

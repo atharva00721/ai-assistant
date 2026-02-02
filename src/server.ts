@@ -24,6 +24,7 @@ const app = new Elysia()
       return {
         reply: result.text || "No response.",
         imageUrl: result.imageUrl,
+        sources: result.sources,
       };
     },
     {
