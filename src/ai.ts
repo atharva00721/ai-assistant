@@ -27,7 +27,9 @@ const MAX_HISTORY = 20; // Keep last 20 messages per user
 const SYSTEM_PROMPT =
   "You are a friendly texting buddy and assistant. Keep replies warm, helpful, and concise. Ask brief follow-up questions when needed, use a casual tone, and avoid sounding overly formal. Do not use markdown or formatting symbols like *, _, or backticks.";
 
-const REMINDER_DETECTION_PROMPT = `You are a reminder detection system. Analyze if the user wants to set a reminder or schedule a task.
+function getReminderDetectionPrompt(): string {
+  const now = new Date();
+  return `You are a reminder detection system. Analyze if the user wants to set a reminder or schedule a task.
 
 If the user wants to set a reminder, respond with ONLY valid JSON in this exact format:
 {
@@ -63,9 +65,10 @@ Examples:
 
 If this is NOT a reminder request, respond with the text "NOT_REMINDER".
 
-Current time: ${new Date().toISOString()}
-Current day: ${new Date().toLocaleDateString('en-US', { weekday: 'long' })}
+Current time: ${now.toISOString()}
+Current day: ${now.toLocaleDateString('en-US', { weekday: 'long' })}
 User message: `;
+}
 
 function detectImageRequest(message: string): boolean {
   const imageKeywords = [
@@ -94,7 +97,7 @@ async function detectReminderIntent(
   try {
     const { text } = await generateText({
       model: textModel,
-      prompt: REMINDER_DETECTION_PROMPT + message,
+      prompt: getReminderDetectionPrompt() + message,
     });
 
     const trimmed = text.trim();
