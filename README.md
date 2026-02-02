@@ -5,6 +5,7 @@ A Telegram AI assistant with reminder and scheduled task functionality.
 ## Features
 
 - 🤖 AI-powered conversations using OpenAI-compatible API
+- 🔍 **Web search powered by Perplexity** for real-time information
 - 🔔 Reminder and scheduled task detection
 - 📋 List upcoming reminders with `/list`
 - ❌ Cancel reminders with `/cancel <id>`
@@ -33,6 +34,7 @@ Create a `.env` file with the following variables:
 BOT_TOKEN=your_telegram_bot_token
 ANANNAS_API_KEY=your_api_key
 OPENAI_BASE_URL=https://api.anannas.ai/v1
+PERPLEXITY_API_KEY=your_perplexity_api_key  # Optional: for web search
 DATABASE_URL=postgresql://user:password@host:port/database
 PORT=3000
 API_BASE_URL=http://localhost:3000
@@ -93,6 +95,17 @@ The AI will detect the intent and create a reminder. You'll receive a notificati
 
 **Snooze a reminder**: When you receive a reminder, use the inline buttons to snooze for 10 minutes or 1 hour.
 
+### Web Search
+
+Ask informational or search-related questions to get real-time information from the web:
+- "What's the latest news about AI?"
+- "Who won the Super Bowl?"
+- "Compare iPhone vs Android"
+- "How does photosynthesis work?"
+- "What's the weather like today?"
+
+The assistant will automatically detect search queries and use Perplexity to provide up-to-date, accurate information with natural language summaries.
+
 ### Regular Conversations
 
 Send any other message to have a normal conversation with the AI assistant.
@@ -107,12 +120,13 @@ Send any other message to have a normal conversation with the AI assistant.
 
 ```
 src/
-  ai.ts        - AI logic with reminder intent detection
+  ai.ts        - AI logic with Perplexity search, reminder detection, and conversations
   bot.ts       - Telegram bot integration
   db.ts        - Database connection
   schema.ts    - Database schema definitions
-  server.ts    - Elysia API server
+  server.ts    - Elysia API server with /ask endpoint
   scheduler.ts - Bun.cron reminder scheduler
 scripts/
   init-db.ts   - Database initialization script
+  test-search.ts - Test script for web search functionality
 ```
