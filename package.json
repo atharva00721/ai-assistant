@@ -6,8 +6,10 @@
   "scripts": {
     "start": "bun run src/server.ts",
     "scheduler": "bun run src/scheduler.ts",
+    "bot": "bun run src/bot-polling.ts",
     "db:init": "bun run scripts/init-db.ts",
-    "dev": "bun run src/server.ts"
+    "dev": "bun run src/server.ts",
+    "test:reminder": "bun run scripts/test-reminder.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
