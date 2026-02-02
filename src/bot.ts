@@ -1,34 +1,40 @@
 import { Bot, webhookCallback } from "grammy";
 
-const token = Bun.env.BOT_TOKEN;
-if (!token) {
-  throw new Error("BOT_TOKEN is required.");
-}
-
-const bot = new Bot(token);
 const apiBaseUrl = Bun.env.VERCEL_URL
   ? `https://${Bun.env.VERCEL_URL}`
   : "http://localhost:3000";
 
-bot.on("message:text", async (ctx) => {
-  const message = ctx.message.text.trim();
-  if (!message) return;
+let cachedHandler: ((ctx: any) => Promise<any>) | null = null;
 
-  try {
-    const response = await fetch(`${apiBaseUrl}/ask`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ message }),
-    });
+export function getWebhookHandler() {
+  if (cachedHandler) return cachedHandler;
 
-    const data = (await response.json()) as { reply?: string };
-    const reply = data.reply?.trim() || "No response.";
-    await ctx.reply(reply);
-  } catch {
-    await ctx.reply("Failed to reach the API.");
+  const token = Bun.env.BOT_TOKEN;
+  if (!token) {
+    throw new Error("BOT_TOKEN is required for webhook.");
   }
-});
 
-const handleWebhook = webhookCallback(bot, "elysia");
+  const bot = new Bot(token);
 
-export { bot, handleWebhook };
+  bot.on("message:text", async (ctx) => {
+    const message = ctx.message.text.trim();
+    if (!message) return;
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+
+      const data = (await response.json()) as { reply?: string };
+      const reply = data.reply?.trim() || "No response.";
+      await ctx.reply(reply);
+    } catch {
+      await ctx.reply("Failed to reach the API.");
+    }
+  });
+
+  cachedHandler = webhookCallback(bot, "elysia") as (ctx: any) => Promise<any>;
+  return cachedHandler;
+}

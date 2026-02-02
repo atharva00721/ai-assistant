@@ -1,6 +1,6 @@
 import { Elysia, t } from "elysia";
 import { askAI } from "./ai";
-import { handleWebhook } from "./bot";
+import { getWebhookHandler } from "./bot";
 
 const app = new Elysia()
   .post(
@@ -21,7 +21,8 @@ const app = new Elysia()
       }),
     },
   )
-  .post("/webhook", (ctx) => handleWebhook(ctx));
+  .get("/", () => ({ ok: true }))
+  .post("/webhook", (ctx) => getWebhookHandler()(ctx));
 
 if (!Bun.env.VERCEL) {
   app.listen(3000);
