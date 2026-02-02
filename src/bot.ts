@@ -1,8 +1,6 @@
 import { Bot, webhookCallback } from "grammy";
 
-const apiBaseUrl = Bun.env.VERCEL_URL
-  ? `https://${Bun.env.VERCEL_URL}`
-  : "http://localhost:3000";
+const apiBaseUrl = Bun.env.API_BASE_URL || "http://localhost:3000";
 
 let cachedHandler: ((ctx: any) => Promise<any>) | null = null;
 

@@ -32,9 +32,8 @@ const app = new Elysia()
   }))
   .post("/webhook", (ctx) => getWebhookHandler()(ctx));
 
-if (!Bun.env.VERCEL) {
-  app.listen(3000);
-  console.log("API listening on http://localhost:3000");
-}
+const port = Bun.env.PORT || 3000;
+app.listen(port);
+console.log(`API listening on port ${port}`);
 
 export default app;

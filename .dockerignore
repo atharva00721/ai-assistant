@@ -1,0 +1,10 @@
+node_modules
+.git
+.env
+.env.local
+.cursor
+.vscode
+*.md
+.gitignore
+vercel.json
+api
