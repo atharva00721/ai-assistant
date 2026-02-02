@@ -10,7 +10,7 @@ const openai = createOpenAI({
   baseURL: "https://api.anannas.ai/v1",
   apiKey,
 });
-const textModel = openai("anthropic/claude-3-sonnet");
+const textModel = openai.chat("openai-gpt-oss-20b-1-0");
 
 interface Message {
   role: "user" | "assistant";

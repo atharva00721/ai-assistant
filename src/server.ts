@@ -44,7 +44,7 @@ const app = new Elysia()
   }))
   .post("/webhook", (ctx) => getWebhookHandler()(ctx));
 
-const port = Bun.env.PORT || 3000;
+const port = Number(Bun.env.PORT) || 3000;
 app.listen(port);
 console.log(`API listening on port ${port}`);
 
