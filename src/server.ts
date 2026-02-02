@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { askAI } from "./ai";
 import { getWebhookHandler } from "./bot";
+import pkg from "../package.json" assert { type: "json" };
 
 const app = new Elysia()
   .post(
@@ -22,6 +23,13 @@ const app = new Elysia()
     },
   )
   .get("/", () => ({ ok: true }))
+  .get("/health", () => ({ ok: true }))
+  .get("/version", () => ({
+    version:
+      (pkg as { version?: string }).version ??
+      Bun.env.VERCEL_GIT_COMMIT_SHA ??
+      "unknown",
+  }))
   .post("/webhook", (ctx) => getWebhookHandler()(ctx));
 
 if (!Bun.env.VERCEL) {
