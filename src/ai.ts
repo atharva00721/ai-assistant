@@ -36,6 +36,8 @@ interface Message {
 }
 
 const conversations = new Map<string, Message[]>();
+// Remember the last image per user so they can say "search this" afterwards.
+const lastImages = new Map<string, string>();
 const MAX_HISTORY = 20; // Keep last 20 messages per user
 const SYSTEM_PROMPT = `You are a real human-like assistant texting on Telegram. You sound like a smart, relaxed friend—helpful but not stiff or corporate.
 
@@ -304,6 +306,55 @@ Find current, accurate info and reply in plain language—like you’re explaini
   }
 }
 
+/**
+ * Use the vision model to turn an image + user question into a short web search query,
+ * then run a web search and have the main LLM answer using those results.
+ */
+async function searchImageOnWeb(
+  imageDataUrl: string,
+  userMessage: string,
+  userId: string,
+): Promise<string> {
+  const { text: rawQuery } = await generateText({
+    model: visionModel,
+    system:
+      "You help turn an image plus the user's question into a short web search query.\n" +
+      "- Look at the image and any text on it.\n" +
+      "- Infer the product/brand/name or key entities if relevant.\n" +
+      "- Reply with ONLY a concise Google-style search query. No explanation, no quotes.",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              `User message: ${userMessage || "(no extra question, just the image)"}\n` +
+              "Return only a short search query string that would help answer it.",
+          },
+          {
+            type: "image",
+            image: imageDataUrl,
+          },
+        ],
+      },
+    ],
+  });
+
+  const cleaned = rawQuery.trim().replace(/^['\"]|['\"]$/g, "");
+  const searchQuery =
+    cleaned ||
+    "identify and search for the main product or object in this image";
+
+  const searchResult = await searchWeb(searchQuery);
+  return await mainLLMRespondWithContext(
+    userId,
+    userMessage || searchQuery,
+    searchResult,
+    "search",
+  );
+}
+
 export async function askAI(
   message: string,
   userId: string,
@@ -329,25 +380,81 @@ export async function askAI(
     };
   }
 
-  // Image understanding (vision) - user sent a photo
+  // If we got an image, remember it so the user can say "search this" afterwards.
+  if (imageUrl && imageUrl.startsWith("data:")) {
+    lastImages.set(userId, imageUrl);
+  }
+
+  // Image + explicit search intent in the SAME message (caption like "search this", "google this shampoo").
+  const imageSearchCaptionIntent =
+    !!imageUrl &&
+    !!searchModel &&
+    (detectExplicitWebSearch(message) ||
+      /\b(search|google|look\s+up|price|buy|reviews?|where to (buy|get))/i.test(
+        message,
+      ));
+
+  if (imageSearchCaptionIntent && imageUrl) {
+    try {
+      const text = await searchImageOnWeb(imageUrl, message, userId);
+      return { text };
+    } catch (error) {
+      console.error("Image + web search error:", error);
+      // Fall back to plain image description below.
+    }
+  }
+
+  // Follow‑up like "search this" after sending an image (no image in this message).
+  const refersToPreviousImage =
+    !imageUrl &&
+    lastImages.has(userId) &&
+    /\b(this|this one|this pic|this picture|this photo|this product|this item)\b/i.test(
+      message,
+    ) &&
+    !!searchModel &&
+    (detectExplicitWebSearch(message) || /^search\b/i.test(message.trim()));
+
+  if (refersToPreviousImage) {
+    const lastImage = lastImages.get(userId)!;
+    try {
+      const text = await searchImageOnWeb(lastImage, message, userId);
+      return { text };
+    } catch (error) {
+      console.error("Follow-up image search error:", error);
+      // If it fails, continue with normal text flow.
+    }
+  }
+
+  // Image understanding (vision) - user sent a photo but is NOT asking for web search.
   if (imageUrl) {
     try {
       // Ensure imageUrl is a valid data URL
       if (!imageUrl.startsWith("data:")) {
-        console.error("Invalid image format - expected data URL, got:", imageUrl.substring(0, 100));
-        return { text: "Sorry, I couldn't process that image format. Please try sending the image again." };
+        console.error(
+          "Invalid image format - expected data URL, got:",
+          imageUrl.substring(0, 100),
+        );
+        return {
+          text:
+            "Sorry, I couldn't process that image format. Please try sending the image again.",
+        };
       }
-      
+
       const userPrompt = message.trim() || "What's in this image?";
       let history = conversations.get(userId) || [];
-      
+
       const { text } = await generateText({
         model: visionModel,
-        system: SYSTEM_PROMPT + "\n\nYou can see images. When the user sends a photo, describe what you see naturally—like you're telling a friend. Be specific about objects, text, people, scenes, etc. If they ask a question about the image, answer it.",
+        system:
+          SYSTEM_PROMPT +
+          "\n\nYou can see images. When the user sends a photo, describe what you see naturally—like you're telling a friend. Be specific about objects, text, people, scenes, etc. If they ask a question about the image, answer it.",
         messages: [
           ...history.slice(-10).map((msg) => ({
             role: msg.role,
-            content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+            content:
+              typeof msg.content === "string"
+                ? msg.content
+                : JSON.stringify(msg.content),
           })),
           {
             role: "user",
@@ -358,20 +465,30 @@ export async function askAI(
           },
         ],
       });
-      
+
       history.push({ role: "user", content: userPrompt });
       history.push({ role: "assistant", content: text });
       if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
       conversations.set(userId, history);
-      
+
       return { text };
     } catch (error: any) {
       console.error("Vision error:", error);
       const errorMsg = error?.message || String(error);
-      if (errorMsg.includes("图片输入格式") || errorMsg.includes("image") || errorMsg.includes("format")) {
-        return { text: "Sorry, I couldn't process that image format. The image might be corrupted or in an unsupported format. Please try sending a different image." };
+      if (
+        errorMsg.includes("图片输入格式") ||
+        errorMsg.includes("image") ||
+        errorMsg.includes("format")
+      ) {
+        return {
+          text:
+            "Sorry, I couldn't process that image format. The image might be corrupted or in an unsupported format. Please try sending a different image.",
+        };
       }
-      return { text: "Sorry, I couldn't analyze that image. Try sending it again or describe what you need." };
+      return {
+        text:
+          "Sorry, I couldn't analyze that image. Try sending it again or describe what you need.",
+      };
     }
   }
 
