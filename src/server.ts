@@ -6,6 +6,7 @@ import { WEBAPP_HTML } from "./webapp-html.js";
 import pkg from "../package.json" assert { type: "json" };
 import { db } from "./db.js";
 import { reminders, users, notes, habitLogs } from "./schema.js";
+import { createMemory } from "./memory-repo.js";
 import { eq, and, gte, lt, sql, desc, like } from "drizzle-orm";
 
 // Helper function to get or create user
@@ -274,7 +275,19 @@ const app = new Elysia()
       if (result.note) {
         try {
           if (result.note.action === "save" && result.note.content) {
-            await db.insert(notes).values({ userId, content: result.note.content });
+            const [note] = await db
+              .insert(notes)
+              .values({ userId, content: result.note.content })
+              .returning();
+            if (note) {
+              await createMemory({
+                userId,
+                kind: "note",
+                content: result.note.content.trim(),
+                metadata: { noteId: note.id, source: "note" },
+                importance: 2,
+              });
+            }
             return { reply: `📝 Saved: "${result.note.content.slice(0, 80)}${result.note.content.length > 80 ? "…" : ""}"` };
           }
           if (result.note.action === "search" && result.note.query) {
