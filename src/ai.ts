@@ -1,5 +1,12 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
+import {
+  storeConversation,
+  getRecentConversations,
+  searchSimilarConversations,
+  extractMemories,
+  getRelevantMemories,
+} from "./memory";
 
 const apiKey = Bun.env.ANANNAS_API_KEY;
 if (!apiKey) {
@@ -32,10 +39,13 @@ interface Message {
   content: string;
 }
 
-const conversations = new Map<string, Message[]>();
 const MAX_HISTORY = 20; // Keep last 20 messages per user
 const SYSTEM_PROMPT =
   "You are a friendly texting buddy and assistant. Keep replies warm, helpful, and concise. Ask brief follow-up questions when needed, use a casual tone, and avoid sounding overly formal. Do not use markdown or formatting symbols like *, _, or backticks.";
+
+// Enable/disable memory features
+const MEMORY_ENABLED = Bun.env.MEMORY_ENABLED !== "false"; // Enabled by default
+const MEMORY_EXTRACTION_ENABLED = Bun.env.MEMORY_EXTRACTION_ENABLED !== "false";
 
 function getReminderDetectionPrompt(userTimezone: string): string {
   const now = new Date();
@@ -222,50 +232,174 @@ export async function askAI(
     return { reminder: reminderIntent };
   }
 
+  // Store user message in memory if enabled
+  if (MEMORY_ENABLED) {
+    await storeConversation(userId, "user", message);
+  }
+
   // Check if this is a search/informational query
   const isSearchQuery = detectSearchIntent(message);
   if (isSearchQuery && searchModel) {
     const searchResult = await searchWeb(message);
     
-    // Add to conversation history for context
-    let history = conversations.get(userId) || [];
-    history.push({ role: "user", content: message });
-    history.push({ role: "assistant", content: searchResult });
-    
-    if (history.length > MAX_HISTORY) {
-      history = history.slice(-MAX_HISTORY);
+    // Store assistant response in memory
+    if (MEMORY_ENABLED) {
+      await storeConversation(userId, "assistant", searchResult);
     }
-    
-    conversations.set(userId, history);
     
     return { text: searchResult };
   }
 
-  // Standard text conversation
-  let history = conversations.get(userId) || [];
-  history.push({ role: "user", content: message });
+  // Get conversation context from memory
+  let history: Message[] = [];
+  let contextPrefix = "";
+  
+  if (MEMORY_ENABLED) {
+    try {
+      // Get recent conversation history from database
+      const recentConversations = await getRecentConversations(userId, MAX_HISTORY);
+      history = recentConversations.map((conv) => ({
+        role: conv.role as "user" | "assistant",
+        content: conv.content,
+      }));
 
-  const prompt = history
+      // Get relevant memories for context
+      const relevantMemories = await getRelevantMemories(userId, message, 5);
+      
+      if (relevantMemories.length > 0) {
+        const memoryContext = relevantMemories
+          .filter((mem) => mem.similarity > 0.7) // Only high similarity
+          .map((mem) => `[${mem.category}] ${mem.content}`)
+          .join("\n");
+        
+        if (memoryContext) {
+          contextPrefix = `Context about the user:\n${memoryContext}\n\n`;
+        }
+      }
+
+      // Search for similar past conversations if the query seems to reference something
+      if (message.toLowerCase().includes("remember") || 
+          message.toLowerCase().includes("you said") ||
+          message.toLowerCase().includes("we talked") ||
+          message.toLowerCase().includes("earlier")) {
+        const similarConversations = await searchSimilarConversations(userId, message, 3);
+        
+        if (similarConversations.length > 0) {
+          const references = similarConversations
+            .filter((conv) => conv.similarity > 0.75)
+            .map((conv) => `${conv.role}: ${conv.content}`)
+            .join("\n");
+          
+          if (references) {
+            contextPrefix += `Relevant past conversation:\n${references}\n\n`;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error retrieving memory context:", error);
+      // Fall back to empty history
+    }
+  }
+
+  // Build prompt with context
+  const conversationHistory = history
     .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
     .join("\n");
+
+  const fullPrompt = contextPrefix + conversationHistory;
 
   const { text } = await generateText({
     model: textModel,
     system: SYSTEM_PROMPT,
-    prompt,
+    prompt: fullPrompt,
   });
 
-  history.push({ role: "assistant", content: text });
-
-  if (history.length > MAX_HISTORY) {
-    history = history.slice(-MAX_HISTORY);
+  // Store assistant response in memory
+  if (MEMORY_ENABLED) {
+    await storeConversation(userId, "assistant", text);
+    
+    // Extract memories from the conversation periodically
+    if (MEMORY_EXTRACTION_ENABLED) {
+      // Extract memories every 5 messages (to avoid too frequent extractions)
+      const conversationCount = history.length;
+      if (conversationCount % 10 === 0) {
+        // Create a summary of recent conversation for memory extraction
+        const recentExchange = `User: ${message}\nAssistant: ${text}`;
+        
+        // Run memory extraction asynchronously (don't wait)
+        extractMemories(userId, recentExchange).catch((err) => {
+          console.error("Error extracting memories:", err);
+        });
+      }
+    }
   }
-
-  conversations.set(userId, history);
 
   return { text };
 }
 
 export function clearHistory(userId: string): void {
-  conversations.delete(userId);
+  // This function is kept for backward compatibility
+  // Conversation history is now stored in the database
+  console.log(`Note: Conversation history for ${userId} is now stored in database`);
+}
+
+/**
+ * Manually trigger memory extraction for recent conversations
+ */
+export async function extractRecentMemories(userId: string): Promise<number> {
+  if (!MEMORY_ENABLED || !MEMORY_EXTRACTION_ENABLED) {
+    return 0;
+  }
+
+  try {
+    const recentConversations = await getRecentConversations(userId, 10);
+    
+    if (recentConversations.length === 0) {
+      return 0;
+    }
+
+    const conversationText = recentConversations
+      .map((conv) => `${conv.role}: ${conv.content}`)
+      .join("\n");
+
+    await extractMemories(userId, conversationText);
+    return recentConversations.length;
+  } catch (error) {
+    console.error("Error extracting recent memories:", error);
+    return 0;
+  }
+}
+
+/**
+ * Get a summary of stored memories for a user
+ */
+export async function getMemorySummary(userId: string): Promise<string> {
+  if (!MEMORY_ENABLED) {
+    return "Memory feature is not enabled.";
+  }
+
+  try {
+    const categories = ["preference", "fact", "context", "relationship"];
+    const summaryParts: string[] = [];
+
+    for (const category of categories) {
+      const memories = await getRelevantMemories(userId, category, 5);
+      
+      if (memories.length > 0) {
+        summaryParts.push(`\n**${category.charAt(0).toUpperCase() + category.slice(1)}s:**`);
+        memories.forEach((mem, idx) => {
+          summaryParts.push(`${idx + 1}. ${mem.content}`);
+        });
+      }
+    }
+
+    if (summaryParts.length === 0) {
+      return "No memories stored yet. Keep chatting to build up your memory!";
+    }
+
+    return "What I remember about you:" + summaryParts.join("\n");
+  } catch (error) {
+    console.error("Error getting memory summary:", error);
+    return "Error retrieving memory summary.";
+  }
 }
