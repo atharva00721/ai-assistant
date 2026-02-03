@@ -121,7 +121,7 @@ const app = new Elysia()
           return { reply: `❌ Todoist not connected.\n\nConnect with:\n/todoist_token YOUR_API_TOKEN\n\nGet your token from:\nhttps://todoist.com/app/settings/integrations/developer` };
         }
 
-        return { reply: `🎯 Todoist Features:\n\n📝 Tasks:\n• "Add task to [description]"\n• "Show my tasks"\n• "Complete task [name]"\n• "Delete task [name]"\n• "Update task [old] to [new]"\n\n📁 Projects:\n• "Create project [name]"\n• "Show my projects"\n• "Delete project [name]"\n\n🏷️ Labels:\n• "Create label [name]"\n• "Show my labels"\n• "Delete label [name]"\n\n🔍 Search:\n• "Show urgent tasks" (p1)\n• "Show tasks for today"\n• "Show tasks for tomorrow"\n\n💡 Just ask naturally!` };
+        return { reply: `🎯 Todoist – ask naturally:\n\n📝 Add tasks:\n• "Add buy milk, eggs, bread"\n• "Add call mom tomorrow"\n• "Add task [description]"\n\n📋 List & search:\n• "Show my tasks" / "Tasks for today"\n• "Show urgent tasks"\n\n✅ Complete:\n• "Mark [task] as done"\n• "Mark all done" / "Complete everything"\n\n🗑️ Delete:\n• "Delete task [name]"\n• "Delete all tasks" / "Clear everything"\n• "Delete all tasks for today"\n\n📁 Projects & labels: "Create project X", "Show projects", etc.\n\n💡 Use normal language – e.g. "add groceries and workout for tomorrow"` };
       }
 
       // Handle /timezone command

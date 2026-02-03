@@ -20,50 +20,43 @@ const textModel = openai.chat("openai-gpt-oss-20b-1-0");
 // Todoist command detection prompt
 function getTodoistDetectionPrompt(): string {
   return `You are a Todoist command detector. Analyze if the user wants to interact with Todoist.
+Extract intent and parameters. Respond with ONLY valid JSON, no markdown or extra text.
 
-Detect these intents and respond with ONLY valid JSON:
+INTENTS:
+- ADD_TASK: single task (use "content", "due_string", "priority", "description", "project_id")
+- ADD_TASKS: MULTIPLE tasks in one message — extract each item as a separate task. Use "tasks": ["item1", "item2", ...]. Optional shared: "due_string", "priority", "project_id"
+- LIST_TASKS: show tasks (params: "filter" e.g. "today", "overdue", "p1"; "project_id"; "label")
+- COMPLETE_TASK: mark one task done ("task_name" or "task_id")
+- COMPLETE_ALL_TASKS: mark ALL matching tasks done. Use "filter" (e.g. "today", "overdue", or empty for all active)
+- DELETE_TASK: delete one task ("task_name" or "task_id")
+- DELETE_ALL_TASKS: delete ALL tasks. Use "filter" (e.g. "today", "overdue", project name, or empty for everything). Phrases: "delete all", "clear all", "wipe tasks", "remove everything"
+- UPDATE_TASK: change a task ("task_name"/"task_id", "content"/"new_content", "due_string", "priority")
+- CREATE_PROJECT, LIST_PROJECTS, DELETE_PROJECT
+- ADD_LABEL, LIST_LABELS, DELETE_LABEL
+- SEARCH_TASKS: search/filter (params: "filter" or "query")
 
-1. ADD_TASK - User wants to add/create a task
-2. LIST_TASKS - User wants to see their tasks
-3. COMPLETE_TASK - User wants to mark a task as done
-4. DELETE_TASK - User wants to delete/remove a task
-5. UPDATE_TASK - User wants to modify a task
-6. CREATE_PROJECT - User wants to create a project
-7. LIST_PROJECTS - User wants to see their projects
-8. ADD_LABEL - User wants to create a label
-9. LIST_LABELS - User wants to see their labels
-10. SEARCH_TASKS - User wants to search/filter tasks
+MULTI-TASK RULES:
+- "add X, Y and Z" / "add X, Y, Z" / "remind me to X, Y, Z" → ADD_TASKS with tasks: ["X", "Y", "Z"]
+- "add buy milk, eggs, bread" → ADD_TASKS, tasks: ["buy milk", "eggs", "bread"]
+- "create tasks: call mom, send email, workout" → ADD_TASKS, tasks: ["call mom", "send email", "workout"]
+- One task only → ADD_TASK with content
 
-Response format:
-{
-  "intent": "ADD_TASK" | "LIST_TASKS" | "COMPLETE_TASK" | etc.,
-  "params": {
-    // Intent-specific parameters extracted from the message
-  }
-}
+BULK RULES:
+- "delete all (my) tasks" / "clear everything" / "wipe my todo list" → DELETE_ALL_TASKS, params: {}
+- "delete all tasks for today" → DELETE_ALL_TASKS, params: {"filter": "today"}
+- "mark all done" / "complete everything" / "finish all tasks" → COMPLETE_ALL_TASKS, params: {}
+- "complete all tasks for today" → COMPLETE_ALL_TASKS, params: {"filter": "today"}
+
+Response format: {"intent": "...", "params": {...}}
 
 Examples:
-
-User: "add a task to buy groceries tomorrow"
-Response: {"intent": "ADD_TASK", "params": {"content": "buy groceries", "due_string": "tomorrow"}}
-
-User: "show me my tasks for today"
-Response: {"intent": "LIST_TASKS", "params": {"filter": "today"}}
-
-User: "mark 'buy milk' as done"
-Response: {"intent": "COMPLETE_TASK", "params": {"task_name": "buy milk"}}
-
-User: "create a project called Work"
-Response: {"intent": "CREATE_PROJECT", "params": {"name": "Work"}}
-
-User: "what are my projects?"
-Response: {"intent": "LIST_PROJECTS", "params": {}}
-
-User: "delete the task about groceries"
-Response: {"intent": "DELETE_TASK", "params": {"task_name": "groceries"}}
-
-User: "show urgent tasks"
-Response: {"intent": "SEARCH_TASKS", "params": {"filter": "p1"}}
+"add buy milk, eggs and bread tomorrow" → {"intent": "ADD_TASKS", "params": {"tasks": ["buy milk", "eggs", "bread"], "due_string": "tomorrow"}}
+"add task buy groceries" → {"intent": "ADD_TASK", "params": {"content": "buy groceries"}}
+"delete all my tasks" → {"intent": "DELETE_ALL_TASKS", "params": {}}
+"clear all tasks" → {"intent": "DELETE_ALL_TASKS", "params": {}}
+"mark everything as done" → {"intent": "COMPLETE_ALL_TASKS", "params": {}}
+"show my tasks" → {"intent": "LIST_TASKS", "params": {}}
+"delete the task about groceries" → {"intent": "DELETE_TASK", "params": {"task_name": "groceries"}}
 
 If this is NOT a Todoist request, respond with: NOT_TODOIST
 
@@ -73,9 +66,12 @@ User message: `;
 interface TodoistIntent {
   intent:
     | "ADD_TASK"
+    | "ADD_TASKS"
     | "LIST_TASKS"
     | "COMPLETE_TASK"
+    | "COMPLETE_ALL_TASKS"
     | "DELETE_TASK"
+    | "DELETE_ALL_TASKS"
     | "UPDATE_TASK"
     | "CREATE_PROJECT"
     | "LIST_PROJECTS"
@@ -138,6 +134,51 @@ export async function processTodoistCommand(
         return `✅ Task created: "${task.content}"${task.due ? `\n📅 Due: ${task.due.string}` : ""}${task.priority > 1 ? `\n⚠️ Priority: ${task.priority}` : ""}\n🔗 ${task.url}`;
       }
 
+      case "ADD_TASKS": {
+        let items: string[] = intent.params.tasks;
+        if (!items || !Array.isArray(items)) {
+          const raw = intent.params.tasks ?? intent.params.content ?? intent.params.task_name;
+          if (typeof raw === "string") {
+            // Split "buy milk, eggs, and bread" or "X; Y; Z" into array
+            items = raw
+              .split(/[,;]|\s+and\s+/i)
+              .map((s) => s.trim())
+              .filter(Boolean);
+          }
+        }
+        if (!items || items.length === 0) {
+          const single = intent.params.content || intent.params.task_name;
+          if (single) {
+            const task = await client.createTask({
+              content: single,
+              due_string: intent.params.due_string || intent.params.due,
+              priority: intent.params.priority || 1,
+              project_id: intent.params.project_id,
+            });
+            return `✅ Task created: "${task.content}"${task.due ? `\n📅 Due: ${task.due.string}` : ""}`;
+          }
+          return "❌ No tasks to add. Say something like: add buy milk, eggs, and bread";
+        }
+        const due = intent.params.due_string || intent.params.due;
+        const priority = intent.params.priority || 1;
+        const projectId = intent.params.project_id;
+        const created: string[] = [];
+        for (const content of items) {
+          const trimmed = typeof content === "string" ? content.trim() : String(content).trim();
+          if (!trimmed) continue;
+          const task = await client.createTask({
+            content: trimmed,
+            due_string: due,
+            priority,
+            project_id: projectId,
+          });
+          created.push(task.content);
+        }
+        if (created.length === 0) return "❌ No valid tasks to add.";
+        if (created.length === 1) return `✅ Task created: "${created[0]}"${due ? `\n📅 Due: ${due}` : ""}`;
+        return `✅ Added ${created.length} tasks:\n${created.map((c, i) => `${i + 1}. ${c}`).join("\n")}${due ? `\n📅 Due: ${due}` : ""}`;
+      }
+
       case "LIST_TASKS": {
         const tasks = await client.getTasks({
           filter: intent.params.filter,
@@ -196,6 +237,36 @@ export async function processTodoistCommand(
 
         await client.deleteTask(task.id);
         return `🗑️ Deleted: "${task.content}"`;
+      }
+
+      case "DELETE_ALL_TASKS": {
+        const filter = intent.params.filter || "";
+        const tasks = await client.getTasks(
+          filter ? { filter } : undefined
+        );
+        const active = tasks.filter((t) => !t.is_completed);
+        if (active.length === 0) {
+          return filter ? `📋 No tasks found for "${filter}". Nothing to delete.` : "📋 No active tasks. Nothing to delete.";
+        }
+        for (const task of active) {
+          await client.deleteTask(task.id);
+        }
+        return `🗑️ Deleted ${active.length} task${active.length === 1 ? "" : "s"}.`;
+      }
+
+      case "COMPLETE_ALL_TASKS": {
+        const filter = intent.params.filter || "";
+        const tasks = await client.getTasks(
+          filter ? { filter } : undefined
+        );
+        const active = tasks.filter((t) => !t.is_completed);
+        if (active.length === 0) {
+          return filter ? `📋 No tasks found for "${filter}". Nothing to complete.` : "📋 No active tasks. Nothing to complete.";
+        }
+        for (const task of active) {
+          await client.closeTask(task.id);
+        }
+        return `✅ Marked ${active.length} task${active.length === 1 ? "" : "s"} as done.`;
       }
 
       case "UPDATE_TASK": {
