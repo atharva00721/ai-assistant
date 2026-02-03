@@ -1,6 +1,7 @@
 import { Elysia, t } from "elysia";
 import { askAI } from "./ai.js";
 import { getWebhookHandler } from "./bot.js";
+import { validateTelegramWebAppInitData } from "./telegram-webapp.js";
 import pkg from "../package.json" assert { type: "json" };
 import { db } from "./db.js";
 import { reminders, users, notes, habitLogs } from "./schema.js";
@@ -427,6 +428,67 @@ const app = new Elysia()
       }),
     },
   )
+  .post(
+    "/webapp/init",
+    async ({ body, set }) => {
+      const initData = body.initData?.trim();
+      if (!initData) {
+        set.status = 400;
+        return { error: "initData required" };
+      }
+      const tgUser = validateTelegramWebAppInitData(initData);
+      if (!tgUser) {
+        set.status = 401;
+        return { error: "Invalid init data" };
+      }
+      const userId = String(tgUser.id);
+      const user = await getOrCreateUser(userId);
+      return {
+        user: {
+          userId: user?.userId,
+          timezone: user?.timezone ?? "UTC",
+          hasTodoist: !!user?.todoistToken,
+        },
+      };
+    },
+    { body: t.Object({ initData: t.String() }) },
+  )
+  .patch(
+    "/webapp/me",
+    async ({ body, set }) => {
+      const initData = body.initData?.trim();
+      if (!initData) {
+        set.status = 400;
+        return { error: "initData required" };
+      }
+      const tgUser = validateTelegramWebAppInitData(initData);
+      if (!tgUser) {
+        set.status = 401;
+        return { error: "Invalid init data" };
+      }
+      const userId = String(tgUser.id);
+      const updates: { timezone?: string; updatedAt: Date } = { updatedAt: new Date() };
+      if (body.timezone?.trim()) updates.timezone = body.timezone.trim();
+      if (Object.keys(updates).length <= 1) {
+        set.status = 400;
+        return { error: "Nothing to update" };
+      }
+      await db.update(users).set(updates).where(eq(users.userId, userId));
+      const [user] = await db.select().from(users).where(eq(users.userId, userId)).limit(1);
+      return { user: { userId: user?.userId, timezone: user?.timezone ?? "UTC" } };
+    },
+    {
+      body: t.Object({
+        initData: t.String(),
+        timezone: t.Optional(t.String()),
+      }),
+    },
+  )
+  .get("/app", async () => {
+    const path = new URL("../webapp/index.html", import.meta.url);
+    const file = Bun.file(path);
+    return new Response(file, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  })
   .get("/", () => ({ ok: true }))
   .get("/health", () => ({ ok: true }))
   .get("/version", () => ({

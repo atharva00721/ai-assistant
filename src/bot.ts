@@ -14,8 +14,23 @@ export function getWebhookHandler() {
 
   const bot = new Bot(token);
 
+  bot.command("start", async (ctx) => {
+    const webAppUrl = `${apiBaseUrl}/app`;
+    await ctx.reply(
+      "👋 Welcome to your AI Assistant!\n\nSet up your account to get personalized reminders, local time, and more.",
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: "⚙️ Set up my account", web_app: { url: webAppUrl } }],
+          ],
+        },
+      },
+    );
+  });
+
   bot.on("message:text", async (ctx) => {
     const message = ctx.message.text.trim();
+    if (message === "/start") return;
     if (!message) return;
 
     const userId = ctx.from?.id.toString();
