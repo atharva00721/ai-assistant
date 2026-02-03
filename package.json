@@ -8,6 +8,8 @@
     "scheduler": "bun run src/scheduler.ts",
     "bot": "bun run src/bot-polling.ts",
     "db:init": "bun run scripts/init-db.ts",
+    "db:migrate": "bun run scripts/migrate.ts",
+    "db:add-users-table": "bun run scripts/add-users-table.ts",
     "dev": "bun run src/server.ts",
     "test:reminder": "bun run scripts/test-reminder.ts",
     "test:search": "bun run scripts/test-search.ts"
