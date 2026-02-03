@@ -19,8 +19,10 @@ const textModel = openai.chat("openai-gpt-oss-20b-1-0");
 
 // Todoist command detection prompt
 function getTodoistDetectionPrompt(): string {
-  return `You are a Todoist command detector. Analyze if the user wants to interact with Todoist.
+  return `You are a Todoist command detector. Analyze if the user wants to interact with Todoist (their TASK LIST, projects, labels).
 Extract intent and parameters. Respond with ONLY valid JSON, no markdown or extra text.
+
+IMPORTANT: If the user wants to SEARCH THE WEB or look something up on the INTERNET (e.g. "search for SpaceX", "look up X", "google Y", "search the web for Z"), respond NOT_TODOIST. SEARCH_TASKS is ONLY for searching or filtering their Todoist TASK LIST (e.g. "show my urgent tasks", "find my tasks about work", "tasks for today").
 
 INTENTS:
 - ADD_TASK: single task (use "content", "due_string", "priority", "description", "project_id")
@@ -33,7 +35,7 @@ INTENTS:
 - UPDATE_TASK: change a task ("task_name"/"task_id", "content"/"new_content", "due_string", "priority")
 - CREATE_PROJECT, LIST_PROJECTS, DELETE_PROJECT
 - ADD_LABEL, LIST_LABELS, DELETE_LABEL
-- SEARCH_TASKS: search/filter (params: "filter" or "query")
+- SEARCH_TASKS: search/filter THEIR TODOIST TASKS only (params: "filter" or "query"). NOT for web search.
 
 MULTI-TASK RULES:
 - "add X, Y and Z" / "add X, Y, Z" / "remind me to X, Y, Z" → ADD_TASKS with tasks: ["X", "Y", "Z"]
@@ -57,8 +59,11 @@ Examples:
 "mark everything as done" → {"intent": "COMPLETE_ALL_TASKS", "params": {}}
 "show my tasks" → {"intent": "LIST_TASKS", "params": {}}
 "delete the task about groceries" → {"intent": "DELETE_TASK", "params": {"task_name": "groceries"}}
+"search for SpaceX" → NOT_TODOIST
+"look up the weather" → NOT_TODOIST
+"show my urgent tasks" → {"intent": "SEARCH_TASKS", "params": {"filter": "p1"}}
 
-If this is NOT a Todoist request, respond with: NOT_TODOIST
+If this is NOT a Todoist request (including any web/internet search), respond with: NOT_TODOIST
 
 User message: `;
 }

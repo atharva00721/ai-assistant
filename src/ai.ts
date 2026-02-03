@@ -38,6 +38,34 @@ const MAX_HISTORY = 20; // Keep last 20 messages per user
 const SYSTEM_PROMPT =
   "You are a friendly texting buddy and assistant. Keep replies warm, helpful, and concise. Ask brief follow-up questions when needed, use a casual tone, and avoid sounding overly formal. Do not use markdown or formatting symbols like *, _, or backticks.";
 
+/** Run main LLM with tool output as context so the main model always replies to the user. */
+async function mainLLMRespondWithContext(
+  userId: string,
+  userMessage: string,
+  toolContent: string,
+  toolType: "search" | "todoist"
+): Promise<string> {
+  const contextInstruction =
+    toolType === "search"
+      ? "The user asked for web search. Below is the search result. Reply naturally based on it—summarize or answer in your friendly tone. No markdown."
+      : "The user did a Todoist action. Below is what happened. Reply naturally and briefly—confirm or comment in your friendly tone. No markdown.";
+  const system = `${SYSTEM_PROMPT}\n\n${contextInstruction}\n\n---\n${toolContent}`;
+  let history = conversations.get(userId) || [];
+  history.push({ role: "user", content: userMessage });
+  const prompt = history
+    .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
+    .join("\n");
+  const { text } = await generateText({
+    model: textModel,
+    system,
+    prompt,
+  });
+  history.push({ role: "assistant", content: text });
+  if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
+  conversations.set(userId, history);
+  return text;
+}
+
 function getReminderDetectionPrompt(userTimezone: string): string {
   const now = new Date();
   const userTime = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
@@ -93,49 +121,43 @@ function detectImageRequest(message: string): boolean {
   return imageKeywords.some((keyword) => lowerMessage.includes(keyword));
 }
 
-function detectSearchIntent(message: string): boolean {
-  const searchKeywords = [
-    "search",
-    "find",
-    "lookup",
-    "look up",
-    "what is",
-    "what are",
-    "who is",
-    "who are",
-    "when",
-    "where",
-    "how",
-    "latest",
-    "recent",
-    "news",
-    "current",
-    "today",
-    "compare",
-    "comparison",
-    "vs",
-    "versus",
-    "difference between",
-    "explain",
-    "research",
-    "information about",
-    "tell me about",
-    "price",
-    "cost",
-    "weather",
-    "forecast",
+// Explicit "search the web" intent — use Perplexity. Check this BEFORE Todoist.
+function detectExplicitWebSearch(message: string): boolean {
+  const lower = message.toLowerCase().trim();
+  const patterns = [
+    /^search\s+(?:for\s+)?/i,
+    /^look\s+up\s+/i,
+    /^lookup\s+/i,
+    /search\s+the\s+web/i,
+    /search\s+online/i,
+    /google\s+/i,
+    /find\s+online/i,
+    /look\s+it\s+up/i,
+    /search\s+for\s+/i,
   ];
-  const lowerMessage = message.toLowerCase();
-  
-  // Check for search keywords
-  const hasSearchKeyword = searchKeywords.some((keyword) => 
-    lowerMessage.includes(keyword)
-  );
-  
-  // Also check if message ends with a question mark (often informational)
-  const isQuestion = message.trim().endsWith("?");
-  
-  return hasSearchKeyword || isQuestion;
+  return patterns.some((re) => re.test(lower));
+}
+
+// Narrow: only time-sensitive or explicitly "search" queries use Perplexity. Normal Q&A → main LLM.
+function detectSearchIntent(message: string): boolean {
+  const lower = message.toLowerCase();
+  // Explicit web search (backup if not caught earlier)
+  if (detectExplicitWebSearch(message)) return true;
+  // Clearly time-sensitive: latest/recent/current/news
+  const timeSensitive = [
+    "latest news",
+    "recent news",
+    "current news",
+    "today's news",
+    "news about",
+    "latest on",
+    "current events",
+    "latest update",
+    "current price",
+    "live score",
+    "right now",
+  ];
+  return timeSensitive.some((phrase) => lower.includes(phrase));
 }
 
 // --- Quick notes / scratchpad ---
@@ -313,12 +335,20 @@ export async function askAI(
     };
   }
 
-  // Check if this is a Todoist request (highest priority after image)
+  // Explicit web search → Perplexity content passed to main LLM, main LLM replies
+  if (detectExplicitWebSearch(message) && searchModel) {
+    const searchResult = await searchWeb(message);
+    const text = await mainLLMRespondWithContext(userId, message, searchResult, "search");
+    return { text };
+  }
+
+  // Todoist → action result passed to main LLM, main LLM replies
   if (todoistToken) {
     const todoistIntent = await detectTodoistIntent(message);
     if (todoistIntent) {
       const todoistResponse = await processTodoistCommand(todoistIntent, todoistToken);
-      return { todoist: todoistResponse };
+      const text = await mainLLMRespondWithContext(userId, message, todoistResponse, "todoist");
+      return { todoist: text };
     }
   }
 
@@ -330,10 +360,11 @@ export async function askAI(
   const habitIntent = detectHabitIntent(message);
   if (habitIntent) return { habit: habitIntent };
 
-  // Weather (first-class intent → web search)
+  // Weather → Perplexity content passed to main LLM, main LLM replies
   if (detectWeatherIntent(message) && searchModel) {
     const weatherResult = await searchWeb(`Current weather and forecast: ${message}`);
-    return { weather: weatherResult };
+    const text = await mainLLMRespondWithContext(userId, message, weatherResult, "search");
+    return { text };
   }
 
   // Focus timer → server will create reminder
@@ -346,23 +377,12 @@ export async function askAI(
     return { reminder: reminderIntent };
   }
 
-  // Check if this is a search/informational query
+  // Time-sensitive search → Perplexity content passed to main LLM, main LLM replies
   const isSearchQuery = detectSearchIntent(message);
   if (isSearchQuery && searchModel) {
     const searchResult = await searchWeb(message);
-    
-    // Add to conversation history for context
-    let history = conversations.get(userId) || [];
-    history.push({ role: "user", content: message });
-    history.push({ role: "assistant", content: searchResult });
-    
-    if (history.length > MAX_HISTORY) {
-      history = history.slice(-MAX_HISTORY);
-    }
-    
-    conversations.set(userId, history);
-    
-    return { text: searchResult };
+    const text = await mainLLMRespondWithContext(userId, message, searchResult, "search");
+    return { text };
   }
 
   // Standard text conversation
