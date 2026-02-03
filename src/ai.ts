@@ -1,5 +1,6 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
+import { detectTodoistIntent, processTodoistCommand } from "./todoist-agent.js";
 
 const apiKey = Bun.env.ANANNAS_API_KEY;
 if (!apiKey) {
@@ -207,7 +208,8 @@ export async function askAI(
   message: string,
   userId: string,
   userTimezone: string = "UTC",
-): Promise<{ text?: string; imageUrl?: string; sources?: any[]; reminder?: ReminderIntent }> {
+  todoistToken?: string | null,
+): Promise<{ text?: string; imageUrl?: string; sources?: any[]; reminder?: ReminderIntent; todoist?: string }> {
   const isImageRequest = detectImageRequest(message);
 
   if (isImageRequest) {
@@ -216,7 +218,16 @@ export async function askAI(
     };
   }
 
-  // Check if this is a reminder request (highest priority)
+  // Check if this is a Todoist request (highest priority after image)
+  if (todoistToken) {
+    const todoistIntent = await detectTodoistIntent(message);
+    if (todoistIntent) {
+      const todoistResponse = await processTodoistCommand(todoistIntent, todoistToken);
+      return { todoist: todoistResponse };
+    }
+  }
+
+  // Check if this is a reminder request
   const reminderIntent = await detectReminderIntent(message, userTimezone);
   if (reminderIntent) {
     return { reminder: reminderIntent };

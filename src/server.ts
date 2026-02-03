@@ -80,6 +80,49 @@ const app = new Elysia()
       // Get or create user with timezone
       const user = await getOrCreateUser(userId, timezone);
       const userTimezone = user?.timezone || "UTC";
+      const todoistToken = user?.todoistToken || null;
+
+      // Handle /todoist_token command
+      if (message.toLowerCase().startsWith("/todoist_token")) {
+        const tokenMatch = message.match(/\/todoist_token\s+(.+)/);
+        if (!tokenMatch || !tokenMatch[1]) {
+          if (todoistToken) {
+            return { reply: `Your Todoist is connected! ✅\n\nTo update your token, use:\n/todoist_token YOUR_NEW_TOKEN\n\nTo disconnect, use:\n/todoist_disconnect` };
+          }
+          return { reply: `Connect your Todoist account by setting your API token:\n\n/todoist_token YOUR_API_TOKEN\n\nGet your token from:\nhttps://todoist.com/app/settings/integrations/developer` };
+        }
+
+        const newToken = tokenMatch[1].trim();
+        await db
+          .update(users)
+          .set({ todoistToken: newToken, updatedAt: new Date() })
+          .where(eq(users.userId, userId));
+        
+        return { reply: `✅ Todoist connected!\n\nYou can now:\n• "Add task to buy milk tomorrow"\n• "Show my tasks for today"\n• "Complete task about groceries"\n• "Create project called Work"\n• "What are my projects?"\n• "Show urgent tasks"\n\nAnd much more! Just ask naturally.` };
+      }
+
+      // Handle /todoist_disconnect command
+      if (message.toLowerCase() === "/todoist_disconnect") {
+        if (!todoistToken) {
+          return { reply: "You don't have a Todoist account connected." };
+        }
+        
+        await db
+          .update(users)
+          .set({ todoistToken: null, updatedAt: new Date() })
+          .where(eq(users.userId, userId));
+        
+        return { reply: "✅ Todoist disconnected." };
+      }
+
+      // Handle /todoist_help command
+      if (message.toLowerCase() === "/todoist_help" || message.toLowerCase() === "/todoist") {
+        if (!todoistToken) {
+          return { reply: `❌ Todoist not connected.\n\nConnect with:\n/todoist_token YOUR_API_TOKEN\n\nGet your token from:\nhttps://todoist.com/app/settings/integrations/developer` };
+        }
+
+        return { reply: `🎯 Todoist Features:\n\n📝 Tasks:\n• "Add task to [description]"\n• "Show my tasks"\n• "Complete task [name]"\n• "Delete task [name]"\n• "Update task [old] to [new]"\n\n📁 Projects:\n• "Create project [name]"\n• "Show my projects"\n• "Delete project [name]"\n\n🏷️ Labels:\n• "Create label [name]"\n• "Show my labels"\n• "Delete label [name]"\n\n🔍 Search:\n• "Show urgent tasks" (p1)\n• "Show tasks for today"\n• "Show tasks for tomorrow"\n\n💡 Just ask naturally!` };
+      }
 
       // Handle /timezone command
       if (message.toLowerCase().startsWith("/timezone")) {
@@ -178,7 +221,12 @@ const app = new Elysia()
         }
       }
 
-      const result = await askAI(message, userId, userTimezone);
+      const result = await askAI(message, userId, userTimezone, todoistToken);
+      
+      // Check if this is a Todoist response
+      if (result.todoist) {
+        return { reply: result.todoist };
+      }
       
       // Check if this is a reminder intent
       if (result.reminder) {
