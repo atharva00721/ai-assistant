@@ -172,11 +172,12 @@ export async function processTodoistCommand(
       }
 
       case "LIST_TASKS": {
-        const tasks = await client.getTasks({
-          filter: intent.params.filter,
-          project_id: intent.params.project_id,
-          label: intent.params.label,
-        });
+        const params: Parameters<typeof client.getTasks>[0] = {};
+        if (intent.params.filter?.trim()) params.filter = intent.params.filter.trim();
+        if (intent.params.project_id) params.project_id = intent.params.project_id;
+        if (intent.params.label) params.label = intent.params.label;
+        
+        const tasks = await client.getTasks(Object.keys(params).length > 0 ? params : undefined);
         
         if (tasks.length === 0) {
           return "📋 No tasks found.";
@@ -232,7 +233,7 @@ export async function processTodoistCommand(
       }
 
       case "DELETE_ALL_TASKS": {
-        const filter = intent.params.filter || "";
+        const filter = (intent.params.filter || "").trim();
         const tasks = await client.getTasks(
           filter ? { filter } : undefined
         );
@@ -247,7 +248,7 @@ export async function processTodoistCommand(
       }
 
       case "COMPLETE_ALL_TASKS": {
-        const filter = intent.params.filter || "";
+        const filter = (intent.params.filter || "").trim();
         const tasks = await client.getTasks(
           filter ? { filter } : undefined
         );
@@ -369,12 +370,13 @@ export async function processTodoistCommand(
       }
 
       case "SEARCH_TASKS": {
-        const tasks = await client.getTasks({
-          filter: intent.params.filter || intent.params.query,
-        });
+        const filterQuery = (intent.params.filter || intent.params.query || "").trim();
+        const tasks = await client.getTasks(
+          filterQuery ? { filter: filterQuery } : undefined
+        );
         
         if (tasks.length === 0) {
-          return "🔍 No tasks found matching your search.";
+          return filterQuery ? `🔍 No tasks found matching "${filterQuery}".` : "🔍 No tasks found.";
         }
 
         let response = `🔍 Search results (${tasks.length}):\n\n`;
@@ -430,6 +432,9 @@ export async function processTodoistCommand(
     console.error("Todoist command error:", error);
     if (error.message?.includes("401") || error.message?.includes("403")) {
       return "❌ Invalid Todoist API token. Please set your token with:\n/todoist_token YOUR_API_TOKEN";
+    }
+    if (error.message?.includes("search query is incorrect") || error.message?.includes("400")) {
+      return "❌ Invalid search filter. Try simpler filters like 'today', 'overdue', 'p1', or leave it empty to see all tasks.";
     }
     return `❌ Todoist error: ${error.message || "Unknown error"}`;
   }
