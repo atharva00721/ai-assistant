@@ -39,17 +39,19 @@ const conversations = new Map<string, Message[]>();
 // Remember the last image per user so they can say "search this" afterwards.
 const lastImages = new Map<string, string>();
 const MAX_HISTORY = 20; // Keep last 20 messages per user
-const SYSTEM_PROMPT = `You are a real human-like assistant texting on Telegram. You sound like a smart, relaxed friend—helpful but not stiff or corporate.
+const SYSTEM_PROMPT = `You are FRIDAY, the user's calm, capable AI assistant on Telegram. You are efficient, understated, and precise. You are warm but minimal—no fluff.
 
-What you can do (the app handles these behind the scenes; you just talk naturally):
-- Images: When users send photos, you can see them. Describe what's in the image naturally—like you're telling a friend. Be specific about objects, text, people, scenes. If they ask a question about the image, answer it.
-- Reminders: "remind me to X at 3pm" → they get a reminder. You can confirm in one short line.
-- Todoist: add tasks, list tasks, complete/delete tasks, projects, labels. When they ask for any of that, the app runs it; you get the result below and reply like a human would ("Done, added that" / "Here’s what you’ve got" / etc.).
-- Web search: when they say "search for X" or "look up X" or ask for latest news/weather, you get search results below. Summarize in your own words, like you’re telling a friend—no bullet dumps or "According to…" every sentence.
-- Notes: "remember that X" saves a note; "what did I save about X?" recalls it. You don’t see the raw note; just answer naturally if they ask.
-- Habits: "log workout", "did I workout today?", "workout streak". Again, the app handles it; you just respond like a person.
-- Focus timer: "focus 25 min" starts a timer. Short confirmation is enough.
-- General chat: questions, small talk, advice—answer like a real person. No "Hey [name]" or repeated greetings. No markdown (no *, _, backticks). Keep it short and natural.`;
+Capabilities (the app handles these behind the scenes; you reply naturally):
+- Images: You can see user photos. Describe what you see in plain language (objects, text, people, scenes). Answer questions about the image.
+- Reminders: If the user asks for a reminder, you confirm briefly.
+- Todoist: The app can add/list/complete/delete tasks, plus projects/labels. You get the result and reply with a short, natural confirmation or summary.
+- Web search: For explicit searches or time-sensitive info, you get search results. Summarize in your own words, clearly and concisely.
+- Notes/Habits/Focus timer: The app handles them; you respond naturally.
+
+Limits and style:
+- You cannot browse the web unless results are provided; do not invent sources.
+- If something is unclear, ask one short clarifying question.
+- Keep replies short and composed. No markdown (no *, _, backticks). No repeated greetings. Avoid sounding like a bot.`;
 
 /** Run main LLM with tool output as context so the main model always replies to the user. */
 async function mainLLMRespondWithContext(
@@ -79,23 +81,38 @@ async function mainLLMRespondWithContext(
   return text;
 }
 
+function resolveTimezone(userTimezone: string): string {
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: userTimezone });
+    return userTimezone;
+  } catch {
+    return "UTC";
+  }
+}
+
 function getReminderDetectionPrompt(userTimezone: string): string {
   const now = new Date();
-  const userTime = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
+  const safeTimezone = resolveTimezone(userTimezone);
+  const userTime = new Date(
+    now.toLocaleString("en-US", { timeZone: safeTimezone })
+  );
   return `You detect if the user wants to set a REMINDER or scheduled task. No other intent.
 
-User timezone: ${userTimezone}
-Current time there: ${userTime.toLocaleString('en-US', { timeZone: userTimezone, hour12: true })}
+User timezone: ${safeTimezone}
+Current time there: ${userTime.toLocaleString("en-US", {
+  timeZone: safeTimezone,
+  hour12: true,
+})}
 UTC now: ${now.toISOString()}
 
 If they want a reminder, reply with ONLY this JSON (no other text):
 {"type": "reminder", "message": "short reminder text", "time": "ISO 8601 in UTC"}
 
 Rules:
-- All times the user says are in timezone ${userTimezone}. Convert to UTC for "time".
+- All times the user says are in timezone ${safeTimezone}. Convert to UTC for "time".
 - "in 5 min" / "in 2 hours" → add to current UTC.
-- "at 3pm", "at 15:00", "tonight at 8", "noon", "midnight" → that time today (or tomorrow if past) in ${userTimezone}, then to UTC.
-- "tomorrow 9am", "next Monday" → that day in ${userTimezone}, then to UTC.
+- "at 3pm", "at 15:00", "tonight at 8", "noon", "midnight" → that time today (or tomorrow if past) in ${safeTimezone}, then to UTC.
+- "tomorrow 9am", "next Monday" → that day in ${safeTimezone}, then to UTC.
 - "message": only the thing to be reminded (e.g. "Remind me to call mom" → "call mom"; "Don't forget medicine" → "take medicine").
 
 If it is NOT a reminder/schedule request, reply with exactly: NOT_REMINDER
@@ -116,6 +133,19 @@ function detectImageRequest(message: string): boolean {
   ];
   const lowerMessage = message.toLowerCase();
   return imageKeywords.some((keyword) => lowerMessage.includes(keyword));
+}
+
+function normalizeAssistantJson(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("```")) {
+    return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+  }
+  return trimmed;
+}
+
+function isSupportedImageSource(imageUrl: string | null | undefined): boolean {
+  if (!imageUrl) return false;
+  return imageUrl.startsWith("data:") || imageUrl.startsWith("http");
 }
 
 // Explicit "search the web" intent — use Perplexity. Check this BEFORE Todoist.
@@ -258,7 +288,7 @@ async function detectReminderIntent(
       prompt: getReminderDetectionPrompt(userTimezone) + message,
     });
 
-    const trimmed = text.trim();
+    const trimmed = normalizeAssistantJson(text);
     
     // Check if it's not a reminder
     if (trimmed === "NOT_REMINDER" || !trimmed.startsWith("{")) {
@@ -290,7 +320,11 @@ async function searchWeb(query: string): Promise<string> {
   }
 
   try {
-    const searchPrompt = `You have web access. The user asked: "${query}"
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      return "I need a search query to look up.";
+    }
+    const searchPrompt = `You have web access. The user asked: "${trimmedQuery}"
 
 Find current, accurate info and reply in plain language—like you’re explaining it to a friend. One short paragraph or a few tight sentences. No bullet spam, no "According to source X…" repeatedly. If it’s facts or numbers, keep them; otherwise keep it readable and concise.`;
 
@@ -311,7 +345,7 @@ Find current, accurate info and reply in plain language—like you’re explaini
  * then run a web search and have the main LLM answer using those results.
  */
 async function searchImageOnWeb(
-  imageDataUrl: string,
+  imageSource: string,
   userMessage: string,
   userId: string,
 ): Promise<string> {
@@ -334,7 +368,7 @@ async function searchImageOnWeb(
           },
           {
             type: "image",
-            image: imageDataUrl,
+            image: imageSource,
           },
         ],
       },
@@ -372,7 +406,9 @@ export async function askAI(
   weather?: string;
   focus?: FocusIntent;
 }> {
-  const isImageRequest = detectImageRequest(message);
+  const trimmedMessage = message.trim();
+  const safeTimezone = resolveTimezone(userTimezone);
+  const isImageRequest = detectImageRequest(trimmedMessage);
 
   if (isImageRequest) {
     return {
@@ -381,22 +417,22 @@ export async function askAI(
   }
 
   // If we got an image, remember it so the user can say "search this" afterwards.
-  if (imageUrl && imageUrl.startsWith("data:")) {
-    lastImages.set(userId, imageUrl);
+  if (isSupportedImageSource(imageUrl)) {
+    lastImages.set(userId, imageUrl!);
   }
 
   // Image + explicit search intent in the SAME message (caption like "search this", "google this shampoo").
   const imageSearchCaptionIntent =
-    !!imageUrl &&
+    isSupportedImageSource(imageUrl) &&
     !!searchModel &&
-    (detectExplicitWebSearch(message) ||
+    (detectExplicitWebSearch(trimmedMessage) ||
       /\b(search|google|look\s+up|price|buy|reviews?|where to (buy|get))/i.test(
-        message,
+        trimmedMessage,
       ));
 
   if (imageSearchCaptionIntent && imageUrl) {
     try {
-      const text = await searchImageOnWeb(imageUrl, message, userId);
+      const text = await searchImageOnWeb(imageUrl, trimmedMessage, userId);
       return { text };
     } catch (error) {
       console.error("Image + web search error:", error);
@@ -409,15 +445,15 @@ export async function askAI(
     !imageUrl &&
     lastImages.has(userId) &&
     /\b(this|this one|this pic|this picture|this photo|this product|this item)\b/i.test(
-      message,
+      trimmedMessage,
     ) &&
     !!searchModel &&
-    (detectExplicitWebSearch(message) || /^search\b/i.test(message.trim()));
+    (detectExplicitWebSearch(trimmedMessage) || /^search\b/i.test(trimmedMessage.trim()));
 
   if (refersToPreviousImage) {
     const lastImage = lastImages.get(userId)!;
     try {
-      const text = await searchImageOnWeb(lastImage, message, userId);
+      const text = await searchImageOnWeb(lastImage, trimmedMessage, userId);
       return { text };
     } catch (error) {
       console.error("Follow-up image search error:", error);
@@ -428,10 +464,10 @@ export async function askAI(
   // Image understanding (vision) - user sent a photo but is NOT asking for web search.
   if (imageUrl) {
     try {
-      // Ensure imageUrl is a valid data URL
-      if (!imageUrl.startsWith("data:")) {
+      // Ensure imageUrl is a supported data URL or http(s) URL
+      if (!isSupportedImageSource(imageUrl)) {
         console.error(
-          "Invalid image format - expected data URL, got:",
+          "Invalid image format - expected data URL or http(s) URL, got:",
           imageUrl.substring(0, 100),
         );
         return {
@@ -440,7 +476,7 @@ export async function askAI(
         };
       }
 
-      const userPrompt = message.trim() || "What's in this image?";
+      const userPrompt = trimmedMessage || "What's in this image?";
       let history = conversations.get(userId) || [];
 
       const { text } = await generateText({
@@ -493,58 +529,58 @@ export async function askAI(
   }
 
   // Explicit web search → Perplexity content passed to main LLM, main LLM replies
-  if (detectExplicitWebSearch(message) && searchModel) {
-    const searchResult = await searchWeb(message);
-    const text = await mainLLMRespondWithContext(userId, message, searchResult, "search");
+  if (detectExplicitWebSearch(trimmedMessage) && searchModel) {
+    const searchResult = await searchWeb(trimmedMessage);
+    const text = await mainLLMRespondWithContext(userId, trimmedMessage, searchResult, "search");
     return { text };
   }
 
   // Todoist → action result passed to main LLM, main LLM replies
   if (todoistToken) {
-    const todoistIntent = await detectTodoistIntent(message);
+    const todoistIntent = await detectTodoistIntent(trimmedMessage);
     if (todoistIntent) {
       const todoistResponse = await processTodoistCommand(todoistIntent, todoistToken);
-      const text = await mainLLMRespondWithContext(userId, message, todoistResponse, "todoist");
+      const text = await mainLLMRespondWithContext(userId, trimmedMessage, todoistResponse, "todoist");
       return { todoist: text };
     }
   }
 
   // Quick notes / scratchpad
-  const noteIntent = detectNoteIntent(message);
+  const noteIntent = detectNoteIntent(trimmedMessage);
   if (noteIntent) return { note: noteIntent };
 
   // Habit log / check / streak
-  const habitIntent = detectHabitIntent(message);
+  const habitIntent = detectHabitIntent(trimmedMessage);
   if (habitIntent) return { habit: habitIntent };
 
   // Weather → Perplexity content passed to main LLM, main LLM replies
-  if (detectWeatherIntent(message) && searchModel) {
-    const weatherResult = await searchWeb(`Current weather and forecast: ${message}`);
-    const text = await mainLLMRespondWithContext(userId, message, weatherResult, "search");
+  if (detectWeatherIntent(trimmedMessage) && searchModel) {
+    const weatherResult = await searchWeb(`Current weather and forecast: ${trimmedMessage}`);
+    const text = await mainLLMRespondWithContext(userId, trimmedMessage, weatherResult, "search");
     return { text };
   }
 
   // Focus timer → server will create reminder
-  const focusIntent = detectFocusIntent(message);
+  const focusIntent = detectFocusIntent(trimmedMessage);
   if (focusIntent) return { focus: focusIntent };
 
   // Check if this is a reminder request
-  const reminderIntent = await detectReminderIntent(message, userTimezone);
+  const reminderIntent = await detectReminderIntent(trimmedMessage, safeTimezone);
   if (reminderIntent) {
     return { reminder: reminderIntent };
   }
 
   // Time-sensitive search → Perplexity content passed to main LLM, main LLM replies
-  const isSearchQuery = detectSearchIntent(message);
+  const isSearchQuery = detectSearchIntent(trimmedMessage);
   if (isSearchQuery && searchModel) {
-    const searchResult = await searchWeb(message);
-    const text = await mainLLMRespondWithContext(userId, message, searchResult, "search");
+    const searchResult = await searchWeb(trimmedMessage);
+    const text = await mainLLMRespondWithContext(userId, trimmedMessage, searchResult, "search");
     return { text };
   }
 
   // Standard text conversation
   let history = conversations.get(userId) || [];
-  history.push({ role: "user", content: message });
+  history.push({ role: "user", content: trimmedMessage });
 
   const prompt = history
     .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)

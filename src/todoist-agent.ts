@@ -21,7 +21,7 @@ const textModel = openai.chat("openai-gpt-oss-20b-1-0");
 function getTodoistDetectionPrompt(): string {
   return `You detect if the user is talking about their TASK LIST (Todoist): adding tasks, listing, completing, deleting, projects, labels. Output ONLY valid JSON: {"intent": "...", "params": {...}} or NOT_TODOIST.
 
-NOT Todoist (reply NOT_TODOIST): web search, "look up X", "google Y", "search the web", general chat.
+You do NOT handle web search or general chat. If the message is about browsing or "look up X", reply NOT_TODOIST.
 SEARCH_TASKS = filter/search THEIR task list only (e.g. "show urgent tasks", "tasks for today"), NOT the internet.
 
 INTENTS and params:
@@ -50,7 +50,7 @@ Examples:
 "search for SpaceX" / "look up weather" → NOT_TODOIST
 "show my urgent tasks" → {"intent": "SEARCH_TASKS", "params": {"filter": "p1"}}
 
-If not about their task list or if it's web search, reply: NOT_TODOIST
+If not about their task list or if it's web search, reply: NOT_TODOIST. Do not include extra text.
 
 User message: `;
 }
@@ -78,6 +78,14 @@ interface TodoistIntent {
   params: Record<string, any>;
 }
 
+function normalizeAssistantJson(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("```")) {
+    return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+  }
+  return trimmed;
+}
+
 export async function detectTodoistIntent(
   message: string
 ): Promise<TodoistIntent | null> {
@@ -87,7 +95,7 @@ export async function detectTodoistIntent(
       prompt: getTodoistDetectionPrompt() + message,
     });
 
-    const trimmed = text.trim();
+    const trimmed = normalizeAssistantJson(text);
 
     if (trimmed === "NOT_TODOIST" || !trimmed.startsWith("{")) {
       return null;
@@ -104,6 +112,28 @@ export async function detectTodoistIntent(
     console.error("Error detecting Todoist intent:", error);
     return null;
   }
+}
+
+function findTaskByIdOrName<T extends { id: string; content: string }>(
+  tasks: T[],
+  taskId?: string,
+  taskName?: string,
+): T | undefined {
+  if (taskId) return tasks.find((t) => t.id === taskId);
+  if (!taskName) return undefined;
+  const lowered = taskName.toLowerCase();
+  return tasks.find((t) => t.content.toLowerCase().includes(lowered));
+}
+
+function findItemByIdOrName<T extends { id: string; name: string }>(
+  items: T[],
+  itemId?: string,
+  itemName?: string,
+): T | undefined {
+  if (itemId) return items.find((item) => item.id === itemId);
+  if (!itemName) return undefined;
+  const lowered = itemName.toLowerCase();
+  return items.find((item) => item.name.toLowerCase().includes(lowered));
 }
 
 export async function processTodoistCommand(
@@ -127,8 +157,10 @@ export async function processTodoistCommand(
       }
 
       case "ADD_TASKS": {
-        let items: string[] = intent.params.tasks;
-        if (!items || !Array.isArray(items)) {
+        let items: string[] | undefined = Array.isArray(intent.params.tasks)
+          ? intent.params.tasks.map((item: unknown) => String(item).trim()).filter(Boolean)
+          : undefined;
+        if (!items || items.length === 0) {
           const raw = intent.params.tasks ?? intent.params.content ?? intent.params.task_name;
           if (typeof raw === "string") {
             // Split "buy milk, eggs, and bread" or "X; Y; Z" into array
@@ -201,14 +233,13 @@ export async function processTodoistCommand(
         // Find task by name or ID
         const tasks = await client.getTasks();
         const taskName = intent.params.task_name || intent.params.content;
-        const task = tasks.find(
-          (t) =>
-            t.id === intent.params.task_id ||
-            t.content.toLowerCase().includes(taskName?.toLowerCase() || "")
-        );
+        const taskId = intent.params.task_id;
+        const task = findTaskByIdOrName(tasks, taskId, taskName);
 
         if (!task) {
-          return `❌ Task not found: "${taskName}"`;
+          return taskName || taskId
+            ? `❌ Task not found: "${taskName || taskId}"`
+            : "❌ Please specify which task to complete.";
         }
 
         await client.closeTask(task.id);
@@ -218,14 +249,13 @@ export async function processTodoistCommand(
       case "DELETE_TASK": {
         const tasks = await client.getTasks();
         const taskName = intent.params.task_name || intent.params.content;
-        const task = tasks.find(
-          (t) =>
-            t.id === intent.params.task_id ||
-            t.content.toLowerCase().includes(taskName?.toLowerCase() || "")
-        );
+        const taskId = intent.params.task_id;
+        const task = findTaskByIdOrName(tasks, taskId, taskName);
 
         if (!task) {
-          return `❌ Task not found: "${taskName}"`;
+          return taskName || taskId
+            ? `❌ Task not found: "${taskName || taskId}"`
+            : "❌ Please specify which task to delete.";
         }
 
         await client.deleteTask(task.id);
@@ -265,14 +295,13 @@ export async function processTodoistCommand(
       case "UPDATE_TASK": {
         const tasks = await client.getTasks();
         const taskName = intent.params.task_name || intent.params.old_content;
-        const task = tasks.find(
-          (t) =>
-            t.id === intent.params.task_id ||
-            t.content.toLowerCase().includes(taskName?.toLowerCase() || "")
-        );
+        const taskId = intent.params.task_id;
+        const task = findTaskByIdOrName(tasks, taskId, taskName);
 
         if (!task) {
-          return `❌ Task not found: "${taskName}"`;
+          return taskName || taskId
+            ? `❌ Task not found: "${taskName || taskId}"`
+            : "❌ Please specify which task to update.";
         }
 
         const updated = await client.updateTask(task.id, {
@@ -313,14 +342,13 @@ export async function processTodoistCommand(
       case "DELETE_PROJECT": {
         const projects = await client.getProjects();
         const projectName = intent.params.name || intent.params.project_name;
-        const project = projects.find(
-          (p) =>
-            p.id === intent.params.project_id ||
-            p.name.toLowerCase().includes(projectName?.toLowerCase() || "")
-        );
+        const projectId = intent.params.project_id;
+        const project = findItemByIdOrName(projects, projectId, projectName);
 
         if (!project) {
-          return `❌ Project not found: "${projectName}"`;
+          return projectName || projectId
+            ? `❌ Project not found: "${projectName || projectId}"`
+            : "❌ Please specify which project to delete.";
         }
 
         await client.deleteProject(project.id);
@@ -355,14 +383,13 @@ export async function processTodoistCommand(
       case "DELETE_LABEL": {
         const labels = await client.getLabels();
         const labelName = intent.params.name || intent.params.label_name;
-        const label = labels.find(
-          (l) =>
-            l.id === intent.params.label_id ||
-            l.name.toLowerCase().includes(labelName?.toLowerCase() || "")
-        );
+        const labelId = intent.params.label_id;
+        const label = findItemByIdOrName(labels, labelId, labelName);
 
         if (!label) {
-          return `❌ Label not found: "${labelName}"`;
+          return labelName || labelId
+            ? `❌ Label not found: "${labelName || labelId}"`
+            : "❌ Please specify which label to delete.";
         }
 
         await client.deleteLabel(label.id);
