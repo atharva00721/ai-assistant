@@ -9,12 +9,15 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export type ReminderKind = "reminder" | "focus_timer";
+
 export const reminders = pgTable("reminders", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull(),
   message: text("message").notNull(),
   remindAt: timestamp("remind_at", { withTimezone: true }).notNull(),
   isDone: boolean("is_done").default(false).notNull(),
+  kind: text("kind"), // "reminder" | "focus_timer" for message style when firing
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

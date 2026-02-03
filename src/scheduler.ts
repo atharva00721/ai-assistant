@@ -10,13 +10,21 @@ if (!botToken) {
 
 const bot = new Bot(botToken);
 
+function getReminderMessage(reminder: { message: string; kind?: string | null }): string {
+  const msg = reminder.message?.trim() || "Time's up";
+  if (reminder.kind === "focus_timer") {
+    return `⏱️ Time's up! You asked me to remind you: ${msg}\n\nHope the focus session went well.`;
+  }
+  return `🔔 Hey — you asked me to remind you: ${msg}`;
+}
+
 async function sendReminder(reminder: any, user: any) {
   try {
     const now = new Date();
     const remindAt = new Date(reminder.remindAt);
     const minutesPast = Math.floor((now.getTime() - remindAt.getTime()) / 1000 / 60);
 
-    const messageText = `🔔 Reminder: ${reminder.message}`;
+    const messageText = getReminderMessage(reminder);
 
     const inlineKeyboard = {
       inline_keyboard: [
@@ -77,8 +85,14 @@ async function processReminders() {
   }
 }
 
-const interval = 30 * 1000;
-console.log("🚀 Reminder scheduler started - checking every 30 seconds");
+const CHECK_INTERVAL_MS = 30 * 1000;
 
-processReminders();
-setInterval(processReminders, interval);
+export function startScheduler(): void {
+  console.log("🚀 Reminder scheduler started - checking every 30 seconds");
+  processReminders();
+  setInterval(processReminders, CHECK_INTERVAL_MS);
+}
+
+if (import.meta.main) {
+  startScheduler();
+}

@@ -1,6 +1,6 @@
 import { and, eq, gte } from "drizzle-orm";
 import { db } from "../../shared/db/index.js";
-import { reminders } from "../../shared/db/schema.js";
+import { reminders, type ReminderKind } from "../../shared/db/schema.js";
 
 export async function listUpcomingReminders(userId: string, now: Date) {
   return db
@@ -22,6 +22,7 @@ export async function createReminder(params: {
   userId: string;
   message: string;
   remindAt: Date;
+  kind?: ReminderKind;
 }) {
   const [newReminder] = await db
     .insert(reminders)
@@ -30,6 +31,7 @@ export async function createReminder(params: {
       message: params.message,
       remindAt: params.remindAt,
       isDone: false,
+      kind: params.kind ?? null,
     })
     .returning();
   return newReminder ?? null;

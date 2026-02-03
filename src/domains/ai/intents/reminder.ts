@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { resolveTimezone } from "../../shared/utils/timezone.js";
+import { resolveTimezone } from "../../../shared/utils/timezone.js";
 import { textModel } from "../clients.js";
 
 interface ReminderIntent {

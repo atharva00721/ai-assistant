@@ -54,6 +54,7 @@ export async function createReminderFromAI(params: {
     userId: params.userId,
     message: params.message,
     remindAt,
+    kind: "reminder",
   });
 
   const timeStr = formatTimeInTimezone(remindAt, params.userTimezone);
@@ -73,6 +74,7 @@ export async function createFocusReminder(params: {
     userId: params.userId,
     message: params.message,
     remindAt,
+    kind: "focus_timer",
   });
   const timeStr = formatTimeShortInTimezone(remindAt, params.userTimezone);
   return {
