@@ -72,13 +72,14 @@ const app = new Elysia()
   .post(
     "/ask",
     async ({ body, set }) => {
-      const message = body.message?.trim();
+      const message = (body.message?.trim() || "").trim();
       const userId = body.userId?.trim();
       const timezone = body.timezone?.trim();
+      const imageUrl = body.imageUrl?.trim();
       
-      if (!message) {
+      if (!message && !imageUrl) {
         set.status = 400;
-        return { reply: "Message is required." };
+        return { reply: "Message or image is required." };
       }
 
       if (!userId) {
@@ -230,7 +231,7 @@ const app = new Elysia()
         }
       }
 
-      const result = await askAI(message, userId, userTimezone, todoistToken);
+      const result = await askAI(message || "What's in this image?", userId, userTimezone, todoistToken, imageUrl || null);
       
       if (result.todoist) {
         return { reply: result.todoist };
@@ -374,9 +375,10 @@ const app = new Elysia()
     },
     {
       body: t.Object({
-        message: t.String(),
+        message: t.Optional(t.String()),
         userId: t.String(),
         timezone: t.Optional(t.String()),
+        imageUrl: t.Optional(t.String()),
       }),
     },
   )

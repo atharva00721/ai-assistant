@@ -28,6 +28,57 @@ export function getWebhookHandler() {
     );
   });
 
+  bot.on("message:photo", async (ctx) => {
+    const userId = ctx.from?.id.toString();
+    if (!userId) return;
+
+    try {
+      const photo = ctx.message.photo;
+      if (!photo || photo.length === 0) return;
+      const largestPhoto = photo[photo.length - 1];
+      if (!largestPhoto) return;
+      const file = await ctx.api.getFile(largestPhoto.file_id);
+      const fileUrl = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+      const caption = ctx.message.caption?.trim() || "";
+
+      const response = await fetch(`${apiBaseUrl}/ask`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          message: caption,
+          userId,
+          imageUrl: fileUrl,
+          firstName: ctx.from?.first_name,
+          lastName: ctx.from?.last_name,
+          username: ctx.from?.username,
+          languageCode: ctx.from?.language_code,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`API ${response.status} ${response.statusText}: ${errorBody}`);
+      }
+
+      const data = (await response.json()) as { reply?: string };
+      await ctx.reply(data.reply?.trim() || "No response.");
+    } catch (error) {
+      console.error("Photo API request failed", { apiBaseUrl, error });
+      await ctx.reply("Sorry, I couldn't process that image. Try again.");
+    }
+  });
+
+  bot.on("message:voice", async (ctx) => {
+    const userId = ctx.from?.id.toString();
+    if (!userId) return;
+
+    try {
+      await ctx.reply("🎤 Voice messages aren't supported yet. Please send a text message or photo instead.");
+    } catch (error) {
+      console.error("Voice message error:", error);
+    }
+  });
+
   bot.on("message:text", async (ctx) => {
     const message = ctx.message.text.trim();
     if (message === "/start") return;
@@ -37,12 +88,18 @@ export function getWebhookHandler() {
     if (!userId) return;
 
     try {
-      // Timezone will be managed server-side per user
-      // Users can set it with /timezone command
+      const from = ctx.from;
       const response = await fetch(`${apiBaseUrl}/ask`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message, userId }),
+        body: JSON.stringify({
+          message,
+          userId,
+          firstName: from?.first_name,
+          lastName: from?.last_name,
+          username: from?.username,
+          languageCode: from?.language_code,
+        }),
       });
 
       if (!response.ok) {

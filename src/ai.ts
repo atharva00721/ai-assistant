@@ -17,6 +17,8 @@ const openai = createOpenAI({
   apiKey,
 });
 const textModel = openai.chat("glm-4.5v");
+// Vision model (same as text model - glm-4.5v supports vision)
+const visionModel = textModel;
 
 // Perplexity client for web search
 const perplexityApiKey = Bun.env.PERPLEXITY_API_KEY;
@@ -38,6 +40,7 @@ const MAX_HISTORY = 20; // Keep last 20 messages per user
 const SYSTEM_PROMPT = `You are a real human-like assistant texting on Telegram. You sound like a smart, relaxed friend—helpful but not stiff or corporate.
 
 What you can do (the app handles these behind the scenes; you just talk naturally):
+- Images: When users send photos, you can see them. Describe what's in the image naturally—like you're telling a friend. Be specific about objects, text, people, scenes. If they ask a question about the image, answer it.
 - Reminders: "remind me to X at 3pm" → they get a reminder. You can confirm in one short line.
 - Todoist: add tasks, list tasks, complete/delete tasks, projects, labels. When they ask for any of that, the app runs it; you get the result below and reply like a human would ("Done, added that" / "Here’s what you’ve got" / etc.).
 - Web search: when they say "search for X" or "look up X" or ask for latest news/weather, you get search results below. Summarize in your own words, like you’re telling a friend—no bullet dumps or "According to…" every sentence.
@@ -306,6 +309,7 @@ export async function askAI(
   userId: string,
   userTimezone: string = "UTC",
   todoistToken?: string | null,
+  imageUrl?: string | null,
 ): Promise<{
   text?: string;
   imageUrl?: string;
@@ -323,6 +327,42 @@ export async function askAI(
     return {
       text: "Image generation is not available right now. Ask me for text instead.",
     };
+  }
+
+  // Image understanding (vision) - user sent a photo
+  if (imageUrl) {
+    try {
+      const userPrompt = message.trim() || "What's in this image?";
+      let history = conversations.get(userId) || [];
+      
+      const { text } = await generateText({
+        model: visionModel,
+        system: SYSTEM_PROMPT + "\n\nYou can see images. When the user sends a photo, describe what you see naturally—like you're telling a friend. Be specific about objects, text, people, scenes, etc. If they ask a question about the image, answer it.",
+        messages: [
+          ...history.slice(-10).map((msg) => ({
+            role: msg.role,
+            content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+          })),
+          {
+            role: "user",
+            content: [
+              { type: "text", text: userPrompt },
+              { type: "image", image: imageUrl },
+            ],
+          },
+        ],
+      });
+      
+      history.push({ role: "user", content: userPrompt });
+      history.push({ role: "assistant", content: text });
+      if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
+      conversations.set(userId, history);
+      
+      return { text };
+    } catch (error) {
+      console.error("Vision error:", error);
+      return { text: "Sorry, I couldn't analyze that image. Try sending it again or describe what you need." };
+    }
   }
 
   // Explicit web search → Perplexity content passed to main LLM, main LLM replies
