@@ -60,6 +60,25 @@ function formatTimeShortInTimezone(date: Date, timezone: string): string {
   });
 }
 
+/** Serve the Web App setup page (works in dev and production/Docker). */
+async function serveWebApp() {
+  const headers = { "Content-Type": "text/html; charset=utf-8" };
+  try {
+    const fromRelative = new URL("../webapp/index.html", import.meta.url);
+    const file = Bun.file(fromRelative);
+    if (await file.exists()) return new Response(file, { headers });
+  } catch {
+    // ignore
+  }
+  try {
+    const fromCwd = Bun.file(`${process.cwd()}/webapp/index.html`);
+    if (await fromCwd.exists()) return new Response(fromCwd, { headers });
+  } catch {
+    // ignore
+  }
+  return new Response("Web App not found. Ensure webapp/index.html exists.", { status: 404, headers: { "Content-Type": "text/plain" } });
+}
+
 const app = new Elysia()
   .post(
     "/ask",
@@ -484,11 +503,8 @@ const app = new Elysia()
       }),
     },
   )
-  .get("/app", async () => {
-    const path = new URL("../webapp/index.html", import.meta.url);
-    const file = Bun.file(path);
-    return new Response(file, { headers: { "Content-Type": "text/html; charset=utf-8" } });
-  })
+  .get("/app", serveWebApp)
+  .get("/app/", serveWebApp)
   .get("/", () => ({ ok: true }))
   .get("/health", () => ({ ok: true }))
   .get("/version", () => ({
