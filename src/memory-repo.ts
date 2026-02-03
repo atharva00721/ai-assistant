@@ -118,14 +118,19 @@ async function fallbackSearchMemories(params: {
         )
       : and(eq(userMemories.userId, params.userId), contentFilter);
 
-  const rows = await db
-    .select()
-    .from(userMemories)
-    .where(whereClause)
-    .orderBy(desc(userMemories.importance), desc(userMemories.updatedAt))
-    .limit(params.topK ?? 8);
+  try {
+    const rows = await db
+      .select()
+      .from(userMemories)
+      .where(whereClause)
+      .orderBy(desc(userMemories.importance), desc(userMemories.updatedAt))
+      .limit(params.topK ?? 8);
 
-  return rows;
+    return rows;
+  } catch (error) {
+    console.error("Failed to run fallback memory search:", error);
+    return [];
+  }
 }
 
 export async function touchMemories(ids: number[]): Promise<void> {
