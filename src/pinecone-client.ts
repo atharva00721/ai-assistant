@@ -105,3 +105,13 @@ export async function queryMemories(params: {
 
   return response.matches ?? [];
 }
+
+export async function describePineconeIndexStats(): Promise<Record<string, unknown>> {
+  // This is a lightweight, read-only call that verifies:
+  // - Your Pinecone API key is valid
+  // - The index host / region configuration works
+  // - The index is reachable from this server
+  // NOTE: The correct HTTP path uses an underscore, not a hyphen.
+  // See: https://docs.pinecone.io/reference/api/latest/data-plane#tag/Query-Operations/operation/DescribeIndexStats
+  return await pineconeFetch<Record<string, unknown>>("/describe_index_stats", {});
+}
