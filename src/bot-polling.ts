@@ -1,4 +1,5 @@
 import { Bot } from "grammy";
+import { createUpdateDeduper } from "./telegram-dedupe.js";
 
 const token = Bun.env.BOT_TOKEN;
 if (!token) {
@@ -7,6 +8,12 @@ if (!token) {
 
 const apiBaseUrl = Bun.env.API_BASE_URL || "http://localhost:3000";
 const bot = new Bot(token);
+const isDuplicateUpdate = createUpdateDeduper();
+
+bot.use((ctx, next) => {
+  if (isDuplicateUpdate(ctx.update.update_id)) return;
+  return next();
+});
 
 bot.on("message:text", async (ctx) => {
   const message = ctx.message.text.trim();

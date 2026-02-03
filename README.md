@@ -81,6 +81,15 @@ Start the scheduler (in a separate terminal):
 bun run src/scheduler.ts
 ```
 
+### Telegram bot mode
+
+Use **one** bot mode at a time:
+
+- **Webhook mode** (recommended for production): configure Telegram to send updates to `/webhook` on your API server.
+- **Polling mode** (local/dev): run `bun run src/bot-polling.ts`.
+
+Running multiple polling processes (or multiple bot instances with the same token) can cause duplicate replies because each process receives the same update.
+
 ## Usage
 
 ### Setting Reminders
