@@ -47,6 +47,18 @@ export const userMemories = pgTable("user_memories", {
   lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+/** Config for morning_job_digest: { time: "09:00", twitterHandles: string[] } */
+export const userAutomations = pgTable("user_automations", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  type: text("type").notNull(), // "morning_job_digest"
+  enabled: boolean("enabled").default(true).notNull(),
+  config: jsonb("config").notNull(), // { time: string, twitterHandles: string[] }
+  lastSentAt: timestamp("last_sent_at", { withTimezone: true }), // last time we sent (for daily digest)
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Reminder = typeof reminders.$inferSelect;
@@ -57,3 +69,5 @@ export type HabitLog = typeof habitLogs.$inferSelect;
 export type NewHabitLog = typeof habitLogs.$inferInsert;
 export type UserMemory = typeof userMemories.$inferSelect;
 export type NewUserMemory = typeof userMemories.$inferInsert;
+export type UserAutomation = typeof userAutomations.$inferSelect;
+export type NewUserAutomation = typeof userAutomations.$inferInsert;

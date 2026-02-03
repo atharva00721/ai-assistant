@@ -23,7 +23,12 @@ One-sentence purpose of each source file, grouped by area.
 - `src/domains/ai/intents/habit.ts` - Detects habit log/check/streak intents.
 - `src/domains/ai/intents/focus.ts` - Detects focus timer intent and duration.
 - `src/domains/ai/intents/search.ts` - Detects explicit, time-sensitive, and weather search intents.
+- `src/domains/ai/intents/job-digest.ts` - Detects morning job list intents (add/remove handles, set time, enable/disable).
 - `src/domains/ai/http.ts` - `/ask` HTTP route and command handling.
+
+### Automations
+- `src/domains/automations/repo.ts` - DB queries for user automations (morning job digest).
+- `src/domains/automations/service.ts` - Morning job list logic and message formatting.
 
 ### Reminders
 - `src/domains/reminders/repo.ts` - DB queries for reminders.

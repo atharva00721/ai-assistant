@@ -11,7 +11,15 @@ import { detectHabitIntent } from "./intents/habit.js";
 import { detectFocusIntent } from "./intents/focus.js";
 import { detectExplicitWebSearch } from "./intents/search.js";
 import { detectReminderIntent } from "./intents/reminder.js";
+import { detectJobDigestIntent } from "./intents/job-digest.js";
 import { classifyIntent } from "./intents/classify.js";
+import {
+  getMorningJobDigestState,
+  addHandleToMorningJobDigest,
+  removeHandleFromMorningJobDigest,
+  setMorningJobDigestTime,
+  setMorningJobDigestEnabled,
+} from "../automations/service.js";
 import { resolveTimezone } from "../../shared/utils/timezone.js";
 
 interface Message {
@@ -74,6 +82,7 @@ export async function askAI(
   habit?: { action: "log" | "check" | "streak"; habitName: string };
   weather?: string;
   focus?: { message: string; durationMinutes: number };
+  jobDigest?: string;
 }> {
   if (!textModel) {
     return {
@@ -261,6 +270,38 @@ export async function askAI(
         }
       }
       break;
+    case "job_digest": {
+      const jobDigestIntent = detectJobDigestIntent(trimmedMessage);
+      if (jobDigestIntent) {
+        switch (jobDigestIntent.action) {
+          case "show": {
+            const state = await getMorningJobDigestState(userId);
+            return { jobDigest: state.reply };
+          }
+          case "add_handle": {
+            const out = await addHandleToMorningJobDigest(userId, jobDigestIntent.handle);
+            return { jobDigest: out.reply };
+          }
+          case "remove_handle": {
+            const out = await removeHandleFromMorningJobDigest(userId, jobDigestIntent.handle);
+            return { jobDigest: out.reply };
+          }
+          case "set_time": {
+            const out = await setMorningJobDigestTime(userId, jobDigestIntent.time);
+            return { jobDigest: out.reply };
+          }
+          case "enable": {
+            const out = await setMorningJobDigestEnabled(userId, true);
+            return { jobDigest: out.reply };
+          }
+          case "disable": {
+            const out = await setMorningJobDigestEnabled(userId, false);
+            return { jobDigest: out.reply };
+          }
+        }
+      }
+      break;
+    }
     case "chat":
     default:
       break;

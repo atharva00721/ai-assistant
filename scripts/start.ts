@@ -56,6 +56,19 @@ async function ensureTablesExist(sql: any) {
       logged_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
     )
   `;
+
+  await sql`
+    CREATE TABLE IF NOT EXISTS user_automations (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      enabled BOOLEAN DEFAULT true NOT NULL,
+      config JSONB NOT NULL,
+      last_sent_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+      updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+    )
+  `;
   
   console.log("✅ Tables ensured!");
 }

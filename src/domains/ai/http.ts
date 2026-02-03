@@ -208,6 +208,10 @@ export function registerAiRoutes(app: Elysia) {
         }
       }
 
+      if (result.jobDigest) {
+        return { reply: result.jobDigest };
+      }
+
       return {
         reply: result.text || "No response.",
         imageUrl: result.imageUrl,

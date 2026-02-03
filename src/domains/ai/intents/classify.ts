@@ -13,6 +13,7 @@ export type GlobalIntent =
   | "focus_timer"
   | "reminder"
   | "todoist"
+  | "job_digest"
   | "chat";
 
 function getGlobalClassifyPrompt(options: {
@@ -40,6 +41,10 @@ function getGlobalClassifyPrompt(options: {
   }
 
   tools.push(
+    "job_digest - Morning JOB LIST (Twitter accounts to text for jobs): add/remove handles, show list, set time, enable/disable daily digest. Phrases: \"add @x to my job list\", \"morning job list\", \"send my job list at 9am\", \"who to text for jobs\", \"twitter accounts for job\".",
+  );
+
+  tools.push(
     "chat - General conversation, question that doesn't need a tool, unclear, or none of the above.",
   );
 
@@ -57,9 +62,10 @@ Rules:
 - "Log X today" / "did I X today" / "X streak" → habit.
 - "Weather in X" / "will it rain" → weather.
 - "Search for X" / "look up X" / "latest on X" → search.
+- Add/show/set morning job list, Twitter accounts to text for jobs → job_digest.
 - Otherwise or unclear → chat.
 
-Reply with ONLY one word: note, habit, weather, search, focus_timer, reminder, ${hasTodoist ? "todoist, " : ""}or chat. No explanation.
+Reply with ONLY one word: note, habit, weather, search, focus_timer, reminder, ${hasTodoist ? "todoist, " : ""}job_digest, or chat. No explanation.
 
 User message: `;
 }
@@ -87,6 +93,7 @@ export async function classifyIntent(
       "focus_timer",
       "reminder",
       "todoist",
+      "job_digest",
       "chat",
     ];
     if (valid.includes(label as GlobalIntent)) {
