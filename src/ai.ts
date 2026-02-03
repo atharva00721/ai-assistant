@@ -4,20 +4,16 @@ import { detectTodoistIntent, processTodoistCommand } from "./todoist-agent.js";
 import { searchMemories, touchMemories } from "./memory-repo.js";
 
 const apiKey = Bun.env.ANANNAS_API_KEY;
-if (!apiKey) {
-  throw new Error("ANANNAS_API_KEY is required.");
-}
-
 const baseURL = Bun.env.OPENAI_BASE_URL;
-if (!baseURL) {
-  throw new Error("OPENAI_BASE_URL is required.");
-}
+const hasAIConfig = Boolean(apiKey && baseURL);
 
-const openai = createOpenAI({
-  baseURL,
-  apiKey,
-});
-const textModel = openai.chat("glm-4.5v");
+const openai = hasAIConfig
+  ? createOpenAI({
+      baseURL: baseURL as string,
+      apiKey: apiKey as string,
+    })
+  : null;
+const textModel = openai?.chat("glm-4.5v");
 // Vision model (same as text model - glm-4.5v supports vision)
 const visionModel = textModel;
 
@@ -302,6 +298,9 @@ async function detectReminderIntent(
   message: string,
   userTimezone: string,
 ): Promise<ReminderIntent | null> {
+  if (!textModel) {
+    return null;
+  }
   try {
     const { text } = await generateText({
       model: textModel,
@@ -426,6 +425,12 @@ export async function askAI(
   weather?: string;
   focus?: FocusIntent;
 }> {
+  if (!textModel) {
+    return {
+      text:
+        "AI service is not configured. Please set ANANNAS_API_KEY and OPENAI_BASE_URL, then try again.",
+    };
+  }
   const trimmedMessage = message.trim();
   const safeTimezone = resolveTimezone(userTimezone);
   const isImageRequest = detectImageRequest(trimmedMessage);
