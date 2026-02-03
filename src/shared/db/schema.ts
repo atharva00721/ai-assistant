@@ -5,6 +5,10 @@ export const users = pgTable("users", {
   userId: text("user_id").notNull().unique(),
   timezone: text("timezone").notNull().default("Asia/Kolkata"),
   todoistToken: text("todoist_token"),
+  githubToken: text("github_token"),
+  githubAuthType: text("github_auth_type"), // "pat" | "oauth"
+  githubRepo: text("github_repo"), // "owner/name"
+  githubUsername: text("github_username"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
@@ -59,6 +63,15 @@ export const userAutomations = pgTable("user_automations", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const pendingActions = pgTable("pending_actions", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  type: text("type").notNull(),
+  payload: jsonb("payload").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Reminder = typeof reminders.$inferSelect;
@@ -71,3 +84,5 @@ export type UserMemory = typeof userMemories.$inferSelect;
 export type NewUserMemory = typeof userMemories.$inferInsert;
 export type UserAutomation = typeof userAutomations.$inferSelect;
 export type NewUserAutomation = typeof userAutomations.$inferInsert;
+export type PendingAction = typeof pendingActions.$inferSelect;
+export type NewPendingAction = typeof pendingActions.$inferInsert;

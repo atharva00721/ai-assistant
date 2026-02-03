@@ -13,6 +13,7 @@ export type GlobalIntent =
   | "focus_timer"
   | "reminder"
   | "todoist"
+  | "github"
   | "job_digest"
   | "chat";
 
@@ -45,6 +46,10 @@ function getGlobalClassifyPrompt(options: {
   );
 
   tools.push(
+    "github - GitHub actions: create issues, comment on PRs, assign reviewers, request changes, edit code and open PRs. Phrases: \"create an issue\", \"comment on PR\", \"assign reviewers\", \"request changes\", \"edit code in repo\".",
+  );
+
+  tools.push(
     "chat - General conversation, question that doesn't need a tool, unclear, or none of the above.",
   );
 
@@ -65,7 +70,7 @@ Rules:
 - Add/show/set morning job list, Twitter accounts to text for jobs → job_digest.
 - Otherwise or unclear → chat.
 
-Reply with ONLY one word: note, habit, weather, search, focus_timer, reminder, ${hasTodoist ? "todoist, " : ""}job_digest, or chat. No explanation.
+Reply with ONLY one word: note, habit, weather, search, focus_timer, reminder, ${hasTodoist ? "todoist, " : ""}github, job_digest, or chat. No explanation.
 
 User message: `;
 }
@@ -85,17 +90,18 @@ export async function classifyIntent(
       prompt: getGlobalClassifyPrompt(options) + message,
     });
     const label = text.trim().toLowerCase().replace(/\s+/g, " ").split(/[.,]/)[0];
-    const valid: GlobalIntent[] = [
-      "note",
-      "habit",
-      "weather",
-      "search",
-      "focus_timer",
-      "reminder",
-      "todoist",
-      "job_digest",
-      "chat",
-    ];
+  const valid: GlobalIntent[] = [
+    "note",
+    "habit",
+    "weather",
+    "search",
+    "focus_timer",
+    "reminder",
+    "todoist",
+    "github",
+    "job_digest",
+    "chat",
+  ];
     if (valid.includes(label as GlobalIntent)) {
       if (label === "todoist" && !options.hasTodoist) return "chat";
       return label as GlobalIntent;

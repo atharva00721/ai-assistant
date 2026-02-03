@@ -4,8 +4,10 @@ import { buildTodoistConnectedReply, buildTodoistHelpReply, buildTodoistTokenPro
 import { handleListReminders, handleCancelReminderCommand, createReminderFromAI, createFocusReminder } from "../reminders/service.js";
 import { handleNoteIntent } from "../notes/service.js";
 import { handleHabitIntent } from "../habits/service.js";
-import { getOrCreateUser, setTodoistToken, updateTimezone, validateTimezone, getDefaultTimezone } from "../users/service.js";
+import { getOrCreateUser, setTodoistToken, updateTimezone, validateTimezone, getDefaultTimezone, setGithubToken, setGithubRepo, setGithubUsername } from "../users/service.js";
 import { formatTimeInTimezone } from "../../shared/utils/timezone.js";
+import { handleGithubIntent } from "../github/service.js";
+import { fetchGithubUsername } from "../github/auth.js";
 
 export function registerAiRoutes(app: Elysia) {
   return app.post(
@@ -72,6 +74,51 @@ export function registerAiRoutes(app: Elysia) {
         const now = new Date();
         const timeInTz = formatTimeInTimezone(now, newTimezone);
         return { reply: `✅ Timezone updated to ${newTimezone}\nCurrent time: ${timeInTz}` };
+      }
+
+      if (message.toLowerCase().startsWith("/github")) {
+        const apiBaseUrl = Bun.env.API_BASE_URL || "http://localhost:3000";
+        const parts = message.trim().split(/\s+/);
+        const sub = (parts[1] || "").toLowerCase();
+
+        if (sub === "connect") {
+          const url = `${apiBaseUrl}/github/oauth/start?userId=${encodeURIComponent(userId)}`;
+          return { reply: `Connect GitHub: ${url}` };
+        }
+
+        if (sub === "token") {
+          const token = parts[2];
+          if (!token) {
+            return { reply: "Usage: /github token <PAT>" };
+          }
+          try {
+            await setGithubToken(userId, token, "pat");
+            const username = await fetchGithubUsername(token);
+            if (username) await setGithubUsername(userId, username);
+            return { reply: "✅ GitHub token saved." };
+          } catch (err: any) {
+            console.error("GitHub token save failed:", err);
+            return { reply: err?.message || "Failed to save GitHub token." };
+          }
+        }
+
+        if (sub === "repo") {
+          const repo = parts[2];
+          if (!repo) {
+            return { reply: "Usage: /github repo owner/name" };
+          }
+          await setGithubRepo(userId, repo);
+          return { reply: `✅ Default repo set to ${repo}` };
+        }
+
+        if (sub === "status") {
+          const status = user?.githubToken ? "connected" : "not connected";
+          return {
+            reply: `GitHub: ${status}\nRepo: ${user?.githubRepo || "(not set)"}\nUser: ${user?.githubUsername || "(unknown)"}`,
+          };
+        }
+
+        return { reply: "GitHub commands: /github connect | /github token <PAT> | /github repo owner/name | /github status" };
       }
 
       if (
@@ -210,6 +257,17 @@ export function registerAiRoutes(app: Elysia) {
 
       if (result.jobDigest) {
         return { reply: result.jobDigest };
+      }
+
+      if (result.github) {
+        try {
+          const out = await handleGithubIntent({ user, intent: result.github });
+          return { reply: out.reply, replyMarkup: out.replyMarkup };
+        } catch (error) {
+          console.error("GitHub intent error:", error);
+          set.status = 500;
+          return { reply: "GitHub request failed. Check credentials or try again." };
+        }
       }
 
       return {

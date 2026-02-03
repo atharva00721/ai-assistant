@@ -12,6 +12,7 @@ import { detectFocusIntent } from "./intents/focus.js";
 import { detectExplicitWebSearch } from "./intents/search.js";
 import { detectReminderIntent } from "./intents/reminder.js";
 import { detectJobDigestIntent } from "./intents/job-digest.js";
+import { detectGithubIntent, type GithubIntent } from "./intents/github.js";
 import { classifyIntent } from "./intents/classify.js";
 import {
   getMorningJobDigestState,
@@ -83,6 +84,7 @@ export async function askAI(
   weather?: string;
   focus?: { message: string; durationMinutes: number };
   jobDigest?: string;
+  github?: GithubIntent;
 }> {
   if (!textModel) {
     return {
@@ -270,6 +272,11 @@ export async function askAI(
         }
       }
       break;
+    case "github": {
+      const githubIntent = await detectGithubIntent(trimmedMessage);
+      if (githubIntent) return { github: githubIntent };
+      break;
+    }
     case "job_digest": {
       const jobDigestIntent = detectJobDigestIntent(trimmedMessage);
       if (jobDigestIntent) {

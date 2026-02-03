@@ -16,6 +16,8 @@ A Telegram AI assistant with reminder and scheduled task functionality.
 - 📱 Automatic reminder notifications via Telegram
 - 💾 PostgreSQL database for persistent storage
 - ⚡ Efficient scheduler for reminder delivery
+- 🧩 GitHub actions: create issues, comment on PRs, assign reviewers, request changes
+- 🛠️ Codex-powered code edits with confirm-before-write
 
 ## Stack
 
@@ -39,6 +41,13 @@ PERPLEXITY_API_KEY=your_perplexity_api_key  # Optional: for web search
 DATABASE_URL=postgresql://user:password@host:port/database
 PORT=3000
 API_BASE_URL=http://localhost:3000
+GITHUB_TOKEN_ENCRYPTION_KEY=base64_32byte_key
+GITHUB_OAUTH_CLIENT_ID=your_github_client_id
+GITHUB_OAUTH_CLIENT_SECRET=your_github_client_secret
+GITHUB_OAUTH_REDIRECT_URI=http://localhost:3000/github/oauth/callback
+OPENAI_CODEX_API_KEY=your_openai_api_key
+OPENAI_CODEX_MODEL=gpt-5.2-codex
+GITHUB_MCP_ENABLED=false
 ```
 
 ## Installation
@@ -153,11 +162,22 @@ The assistant will automatically detect search queries and use Perplexity to pro
 
 Send any other message to have a normal conversation with the AI assistant.
 
+### GitHub Commands
+
+- `/github connect` - Start GitHub OAuth flow
+- `/github token <PAT>` - Save a GitHub personal access token
+- `/github repo owner/name` - Set default repo
+- `/github status` - Show GitHub connection status
+
 ## Quick Commands
 
 - `/list` - Show all upcoming reminders
 - `/cancel <id>` - Cancel a specific reminder
 - `/timezone [timezone]` - Set or view your timezone
+- `/github connect` - Connect GitHub
+- `/github token <PAT>` - Save a GitHub token
+- `/github repo owner/name` - Set default repo
+- `/github status` - Show GitHub status
 - Normal text - Chat with AI or create reminders
 
 ## Project Structure

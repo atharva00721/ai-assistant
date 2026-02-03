@@ -120,6 +120,7 @@ export function getWebhookHandler() {
         reply?: string;
         imageUrl?: string;
         sources?: Array<{ url: string; title?: string }>;
+        replyMarkup?: any;
       };
 
       if (data.imageUrl) {
@@ -139,7 +140,7 @@ export function getWebhookHandler() {
           });
         }
         
-        await ctx.reply(reply);
+        await ctx.reply(reply, data.replyMarkup ? { reply_markup: data.replyMarkup } : undefined);
       }
     } catch (error) {
       console.error("API request failed", {
@@ -188,6 +189,28 @@ export function getWebhookHandler() {
         await ctx.answerCallbackQuery({ text: "✅ Reminder marked as done!" });
         await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
         await ctx.reply("✅ Great! Reminder completed.");
+      } else if (callbackData.startsWith("gh_confirm_")) {
+        const actionId = parseInt(callbackData.split("_")[2] || "0");
+        const response = await fetch(`${apiBaseUrl}/github/confirm`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ actionId, userId }),
+        });
+        const data = (await response.json()) as { reply?: string };
+        await ctx.answerCallbackQuery({ text: "✅ Confirmed" });
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
+        await ctx.reply(data.reply || "Done.");
+      } else if (callbackData.startsWith("gh_cancel_")) {
+        const actionId = parseInt(callbackData.split("_")[2] || "0");
+        const response = await fetch(`${apiBaseUrl}/github/cancel`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ actionId, userId }),
+        });
+        const data = (await response.json()) as { reply?: string };
+        await ctx.answerCallbackQuery({ text: "Canceled" });
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
+        await ctx.reply(data.reply || "Canceled.");
       }
     } catch (error) {
       console.error("Error handling callback:", error);
