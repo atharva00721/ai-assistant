@@ -30,9 +30,12 @@ async function ensureTablesExist(sql: any) {
       message TEXT NOT NULL,
       remind_at TIMESTAMPTZ NOT NULL,
       is_done BOOLEAN DEFAULT false NOT NULL,
+      kind TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
     )
   `;
+  // Add kind column if table already existed without it (e.g. from an older deploy)
+  await sql`ALTER TABLE reminders ADD COLUMN IF NOT EXISTS kind TEXT`;
   
   // Create notes table if it doesn't exist
   await sql`
