@@ -9,8 +9,9 @@ import { searchWeb } from "./search.js";
 import { detectNoteIntent } from "./intents/note.js";
 import { detectHabitIntent } from "./intents/habit.js";
 import { detectFocusIntent } from "./intents/focus.js";
-import { detectExplicitWebSearch, detectSearchIntent, detectWeatherIntent } from "./intents/search.js";
+import { detectExplicitWebSearch } from "./intents/search.js";
 import { detectReminderIntent } from "./intents/reminder.js";
+import { classifyIntent } from "./intents/classify.js";
 import { resolveTimezone } from "../../shared/utils/timezone.js";
 
 interface Message {
@@ -210,40 +211,59 @@ export async function askAI(
     return { text };
   }
 
-  if (todoistToken) {
-    const todoistIntent = await detectTodoistIntent(trimmedMessage);
-    if (todoistIntent) {
-      const todoistResponse = await processTodoistCommand(todoistIntent, todoistToken);
-      const text = await mainLLMRespondWithContext(userId, trimmedMessage, todoistResponse, "todoist");
-      return { todoist: text };
+  const intent = await classifyIntent(trimmedMessage, {
+    hasTodoist: !!todoistToken,
+    hasSearch: !!searchModel,
+  });
+
+  switch (intent) {
+    case "note": {
+      const noteIntent = detectNoteIntent(trimmedMessage);
+      if (noteIntent) return { note: noteIntent };
+      break;
     }
-  }
-
-  const noteIntent = detectNoteIntent(trimmedMessage);
-  if (noteIntent) return { note: noteIntent };
-
-  const habitIntent = detectHabitIntent(trimmedMessage);
-  if (habitIntent) return { habit: habitIntent };
-
-  if (detectWeatherIntent(trimmedMessage) && searchModel) {
-    const weatherResult = await searchWeb(`Current weather and forecast: ${trimmedMessage}`);
-    const text = await mainLLMRespondWithContext(userId, trimmedMessage, weatherResult, "search");
-    return { text };
-  }
-
-  const focusIntent = detectFocusIntent(trimmedMessage);
-  if (focusIntent) return { focus: focusIntent };
-
-  const reminderIntent = await detectReminderIntent(trimmedMessage, safeTimezone);
-  if (reminderIntent) {
-    return { reminder: reminderIntent };
-  }
-
-  const isSearchQuery = detectSearchIntent(trimmedMessage);
-  if (isSearchQuery && searchModel) {
-    const searchResult = await searchWeb(trimmedMessage);
-    const text = await mainLLMRespondWithContext(userId, trimmedMessage, searchResult, "search");
-    return { text };
+    case "habit": {
+      const habitIntent = detectHabitIntent(trimmedMessage);
+      if (habitIntent) return { habit: habitIntent };
+      break;
+    }
+    case "weather":
+      if (searchModel) {
+        const weatherResult = await searchWeb(`Current weather and forecast: ${trimmedMessage}`);
+        const text = await mainLLMRespondWithContext(userId, trimmedMessage, weatherResult, "search");
+        return { text };
+      }
+      break;
+    case "search":
+      if (searchModel) {
+        const searchResult = await searchWeb(trimmedMessage);
+        const text = await mainLLMRespondWithContext(userId, trimmedMessage, searchResult, "search");
+        return { text };
+      }
+      break;
+    case "focus_timer": {
+      const focusIntent = detectFocusIntent(trimmedMessage);
+      if (focusIntent) return { focus: focusIntent };
+      break;
+    }
+    case "reminder": {
+      const reminderIntent = await detectReminderIntent(trimmedMessage, safeTimezone);
+      if (reminderIntent) return { reminder: reminderIntent };
+      break;
+    }
+    case "todoist":
+      if (todoistToken) {
+        const todoistIntent = await detectTodoistIntent(trimmedMessage);
+        if (todoistIntent) {
+          const todoistResponse = await processTodoistCommand(todoistIntent, todoistToken);
+          const text = await mainLLMRespondWithContext(userId, trimmedMessage, todoistResponse, "todoist");
+          return { todoist: text };
+        }
+      }
+      break;
+    case "chat":
+    default:
+      break;
   }
 
   let history = conversations.get(userId) || [];

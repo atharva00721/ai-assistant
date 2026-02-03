@@ -1,6 +1,8 @@
 export function getTodoistDetectionPrompt(): string {
   return `You detect if the user is talking about their TASK LIST (Todoist): adding tasks, listing, completing, deleting, projects, labels. Output ONLY valid JSON: {"intent": "...", "params": {...}} or NOT_TODOIST.
 
+REMINDER vs TASK: If the user said "remind me to X", "remind me at 5pm", "don't forget to X", "notify me at" — they want a one-off REMINDER (notification), not a task in a list. Reply NOT_TODOIST for those.
+
 You do NOT handle web search or general chat. If the message is about browsing or "look up X", reply NOT_TODOIST.
 SEARCH_TASKS = filter/search THEIR task list only (e.g. "show urgent tasks", "tasks for today"), NOT the internet.
 

@@ -13,7 +13,11 @@ describe("detectFocusIntent", () => {
   });
 
   test("returns null if not a focus request", () => {
-    expect(detectFocusIntent("hello"))
-      .toBeNull();
+    expect(detectFocusIntent("hello")).toBeNull();
+  });
+
+  test("returns null for reminder phrasing so reminder intent can handle it", () => {
+    expect(detectFocusIntent("remind me in 10 min")).toBeNull();
+    expect(detectFocusIntent("don't forget to call, set a timer for 5 min")).toBeNull();
   });
 });

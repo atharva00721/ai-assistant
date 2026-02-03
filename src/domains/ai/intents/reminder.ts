@@ -22,7 +22,7 @@ function getReminderDetectionPrompt(userTimezone: string): string {
   const userTime = new Date(
     now.toLocaleString("en-US", { timeZone: safeTimezone })
   );
-  return `You detect if the user wants to set a REMINDER or scheduled task. No other intent.
+  return `You detect if the user wants a REMINDER: a one-off notification at a specific time or "in X" with a message. No other intent.
 
 User timezone: ${safeTimezone}
 Current time there: ${userTime.toLocaleString("en-US", {
@@ -30,6 +30,11 @@ Current time there: ${userTime.toLocaleString("en-US", {
     hour12: true,
   })}
 UTC now: ${now.toISOString()}
+
+REMINDER = user wants to be notified once (remind me, don't forget, alert me, notify me at X).
+NOT a reminder:
+- Focus/timer countdown: "timer 25 min", "focus 25 min", "pomodoro" → NOT_REMINDER (those are focus timers).
+- Task list: "add X to my tasks", "put on my todo list" → NOT_REMINDER (that's Todoist).
 
 If they want a reminder, reply with ONLY this JSON (no other text):
 {"type": "reminder", "message": "short reminder text", "time": "ISO 8601 in UTC"}
