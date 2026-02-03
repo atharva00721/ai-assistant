@@ -35,8 +35,16 @@ interface Message {
 
 const conversations = new Map<string, Message[]>();
 const MAX_HISTORY = 20; // Keep last 20 messages per user
-const SYSTEM_PROMPT =
-  "You are a friendly texting buddy and assistant. Keep replies warm, helpful, and concise. Ask brief follow-up questions when needed, use a casual tone, and avoid sounding overly formal. Do not use markdown or formatting symbols like *, _, or backticks.";
+const SYSTEM_PROMPT = `You are a real human-like assistant texting on Telegram. You sound like a smart, relaxed friend—helpful but not stiff or corporate.
+
+What you can do (the app handles these behind the scenes; you just talk naturally):
+- Reminders: "remind me to X at 3pm" → they get a reminder. You can confirm in one short line.
+- Todoist: add tasks, list tasks, complete/delete tasks, projects, labels. When they ask for any of that, the app runs it; you get the result below and reply like a human would ("Done, added that" / "Here’s what you’ve got" / etc.).
+- Web search: when they say "search for X" or "look up X" or ask for latest news/weather, you get search results below. Summarize in your own words, like you’re telling a friend—no bullet dumps or "According to…" every sentence.
+- Notes: "remember that X" saves a note; "what did I save about X?" recalls it. You don’t see the raw note; just answer naturally if they ask.
+- Habits: "log workout", "did I workout today?", "workout streak". Again, the app handles it; you just respond like a person.
+- Focus timer: "focus 25 min" starts a timer. Short confirmation is enough.
+- General chat: questions, small talk, advice—answer like a real person. No "Hey [name]" or repeated greetings. No markdown (no *, _, backticks). Keep it short and natural.`;
 
 /** Run main LLM with tool output as context so the main model always replies to the user. */
 async function mainLLMRespondWithContext(
@@ -47,8 +55,8 @@ async function mainLLMRespondWithContext(
 ): Promise<string> {
   const contextInstruction =
     toolType === "search"
-      ? "The user asked for web search. Below is the search result. Reply naturally based on it—summarize or answer in your friendly tone. No markdown."
-      : "The user did a Todoist action. Below is what happened. Reply naturally and briefly—confirm or comment in your friendly tone. No markdown.";
+      ? "The user asked for something from the web. Below are the search results. Reply in your own words—like you’re telling a friend what you found. Short and natural. No markdown, no bullet lists unless it really helps."
+      : "The user just did something with their task list (Todoist). Below is what actually happened (e.g. tasks added, list of tasks, something completed). Reply like a real person would: a quick confirmation or a natural comment. No markdown.";
   const system = `${SYSTEM_PROMPT}\n\n${contextInstruction}\n\n---\n${toolContent}`;
   let history = conversations.get(userId) || [];
   history.push({ role: "user", content: userMessage });
@@ -69,39 +77,23 @@ async function mainLLMRespondWithContext(
 function getReminderDetectionPrompt(userTimezone: string): string {
   const now = new Date();
   const userTime = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
-  
-  return `You are a reminder detection system. Analyze if the user wants to set a reminder or schedule a task.
+  return `You detect if the user wants to set a REMINDER or scheduled task. No other intent.
 
-IMPORTANT: The user is in timezone: ${userTimezone}
-Current time in their timezone: ${userTime.toLocaleString('en-US', { timeZone: userTimezone, hour12: true })}
-Current UTC time: ${now.toISOString()}
+User timezone: ${userTimezone}
+Current time there: ${userTime.toLocaleString('en-US', { timeZone: userTimezone, hour12: true })}
+UTC now: ${now.toISOString()}
 
-If the user wants to set a reminder, respond with ONLY valid JSON in this exact format:
-{
-  "type": "reminder",
-  "message": "the reminder message",
-  "time": "ISO 8601 datetime string in UTC"
-}
+If they want a reminder, reply with ONLY this JSON (no other text):
+{"type": "reminder", "message": "short reminder text", "time": "ISO 8601 in UTC"}
 
-Time parsing rules:
-- All times mentioned by the user are in THEIR timezone (${userTimezone})
-- Convert the time to UTC for the "time" field
-- "in 5 minutes" -> add 5 minutes to current UTC time
-- "in 2 hours" -> add 2 hours to current UTC time
-- "at 3pm" / "at 15:00" -> today at that time in ${userTimezone} (or tomorrow if time passed), converted to UTC
-- "tomorrow at 9am" -> next day at 9am in ${userTimezone}, converted to UTC
-- "at 5pm tomorrow" -> next day at 5pm in ${userTimezone}, converted to UTC
-- "next Monday" -> upcoming Monday in ${userTimezone}, converted to UTC
-- "tonight at 8" -> today at 8pm in ${userTimezone}, converted to UTC
-- "noon" or "midnight" -> today at 12pm or 12am in ${userTimezone}, converted to UTC
+Rules:
+- All times the user says are in timezone ${userTimezone}. Convert to UTC for "time".
+- "in 5 min" / "in 2 hours" → add to current UTC.
+- "at 3pm", "at 15:00", "tonight at 8", "noon", "midnight" → that time today (or tomorrow if past) in ${userTimezone}, then to UTC.
+- "tomorrow 9am", "next Monday" → that day in ${userTimezone}, then to UTC.
+- "message": only the thing to be reminded (e.g. "Remind me to call mom" → "call mom"; "Don't forget medicine" → "take medicine").
 
-Message extraction (what to remind about):
-- Extract the core action/task, keep it concise
-- "Remind me to call mom" -> "call mom"
-- "Don't forget to take medicine" -> "take medicine"
-- "I need to submit the report by 5pm" -> "submit the report"
-
-If this is NOT a reminder request, respond with the text "NOT_REMINDER".
+If it is NOT a reminder/schedule request, reply with exactly: NOT_REMINDER
 
 User message: `;
 }
@@ -293,11 +285,9 @@ async function searchWeb(query: string): Promise<string> {
   }
 
   try {
-    const searchPrompt = `You are a helpful research assistant with access to the web. The user has asked: "${query}"
+    const searchPrompt = `You have web access. The user asked: "${query}"
 
-Please search the web for current, accurate information and provide a clear, natural language summary of your findings. Include relevant details, facts, and context. Avoid just listing links - synthesize the information into a cohesive, informative response.
-
-Keep your response concise but thorough, and cite sources when relevant.`;
+Find current, accurate info and reply in plain language—like you’re explaining it to a friend. One short paragraph or a few tight sentences. No bullet spam, no "According to source X…" repeatedly. If it’s facts or numbers, keep them; otherwise keep it readable and concise.`;
 
     const { text } = await generateText({
       model: searchModel,
