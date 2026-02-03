@@ -1,8 +1,7 @@
-type PineconeVector = {
+type PineconeRecord = {
   id: string;
-  values: number[];
   metadata?: Record<string, unknown>;
-};
+} & Record<string, unknown>;
 
 type PineconeQueryMatch = {
   id: string;
@@ -35,6 +34,22 @@ function getPineconeApiKey(): string {
   return apiKey;
 }
 
+function getPineconeNamespace(): string {
+  const namespace = Bun.env.PINECONE_NAMESPACE;
+  if (!namespace) {
+    throw new Error("PINECONE_NAMESPACE is required.");
+  }
+  return namespace;
+}
+
+function getPineconeTextField(): string {
+  const textField = Bun.env.PINECONE_TEXT_FIELD;
+  if (!textField) {
+    throw new Error("PINECONE_TEXT_FIELD is required.");
+  }
+  return textField;
+}
+
 async function pineconeFetch<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const baseUrl = resolvePineconeBaseUrl();
   const response = await fetch(`${baseUrl}${path}`, {
@@ -54,20 +69,22 @@ async function pineconeFetch<T>(path: string, body: Record<string, unknown>): Pr
   return (await response.json()) as T;
 }
 
-export async function upsertMemoryVector(
+export async function upsertMemoryRecord(
   id: string,
   userId: string,
   kind: string,
-  embedding: number[],
+  content: string,
   metadata?: Record<string, unknown>,
 ): Promise<void> {
-  if (embedding.length === 0) return;
+  const trimmedContent = content.trim();
+  if (!trimmedContent) return;
 
-  const payload: { vectors: PineconeVector[] } = {
-    vectors: [
+  const textField = getPineconeTextField();
+  const payload: { records: PineconeRecord[] } = {
+    records: [
       {
         id,
-        values: embedding,
+        [textField]: trimmedContent,
         metadata: {
           userId,
           kind,
@@ -77,29 +94,37 @@ export async function upsertMemoryVector(
     ],
   };
 
-  await pineconeFetch("/vectors/upsert", payload);
+  const namespace = getPineconeNamespace();
+  await pineconeFetch(`/records/namespaces/${namespace}/upsert`, payload);
 }
 
 export async function queryMemories(params: {
   userId: string;
-  vector: number[];
+  query: string;
   topK: number;
   kinds?: string[];
 }): Promise<PineconeQueryMatch[]> {
-  if (params.vector.length === 0) return [];
+  const trimmedQuery = params.query.trim();
+  if (!trimmedQuery) return [];
 
   const filter: Record<string, unknown> = { userId: params.userId };
   if (params.kinds && params.kinds.length > 0) {
     filter.kind = { $in: params.kinds };
   }
 
+  const textField = getPineconeTextField();
+  const namespace = getPineconeNamespace();
   const response = await pineconeFetch<{ matches?: PineconeQueryMatch[] }>(
-    "/query",
+    `/records/namespaces/${namespace}/query`,
     {
-      vector: params.vector,
       topK: params.topK,
       includeMetadata: false,
       filter,
+      query: {
+        inputs: {
+          [textField]: trimmedQuery,
+        },
+      },
     },
   );
 
