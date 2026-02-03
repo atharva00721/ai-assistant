@@ -24,7 +24,7 @@ export function getWebhookHandler() {
   bot.command("start", async (ctx) => {
     const webAppUrl = `${apiBaseUrl}/app`;
     await ctx.reply(
-      "👋 Welcome to your AI Assistant!\n\nSet up your account to get personalized reminders, local time, and more.",
+      "👋 Hey, I'm Disha!\n\nSet up your account and I'll help with reminders, notes, focus timers, and whatever you need.",
       {
         reply_markup: {
           inline_keyboard: [
