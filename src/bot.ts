@@ -22,6 +22,8 @@ export function getWebhookHandler() {
     if (!userId) return;
 
     try {
+      // Timezone will be managed server-side per user
+      // Users can set it with /timezone command
       const response = await fetch(`${apiBaseUrl}/ask`, {
         method: "POST",
         headers: { "content-type": "application/json" },

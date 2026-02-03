@@ -37,25 +37,34 @@ const MAX_HISTORY = 20; // Keep last 20 messages per user
 const SYSTEM_PROMPT =
   "You are a friendly texting buddy and assistant. Keep replies warm, helpful, and concise. Ask brief follow-up questions when needed, use a casual tone, and avoid sounding overly formal. Do not use markdown or formatting symbols like *, _, or backticks.";
 
-const REMINDER_DETECTION_PROMPT = `You are a reminder detection system. Analyze if the user wants to set a reminder or schedule a task.
+function getReminderDetectionPrompt(userTimezone: string): string {
+  const now = new Date();
+  const userTime = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }));
+  
+  return `You are a reminder detection system. Analyze if the user wants to set a reminder or schedule a task.
+
+IMPORTANT: The user is in timezone: ${userTimezone}
+Current time in their timezone: ${userTime.toLocaleString('en-US', { timeZone: userTimezone, hour12: true })}
+Current UTC time: ${now.toISOString()}
 
 If the user wants to set a reminder, respond with ONLY valid JSON in this exact format:
 {
   "type": "reminder",
   "message": "the reminder message",
-  "time": "ISO 8601 datetime string"
+  "time": "ISO 8601 datetime string in UTC"
 }
 
-Time parsing examples:
-- "in 5 minutes" -> add 5 minutes to current time
-- "in 2 hours" -> add 2 hours to current time
-- "at 3pm" / "at 15:00" -> today at that time (or tomorrow if time passed)
-- "tomorrow at 9am" -> next day at 9am
-- "at 5pm tomorrow" -> next day at 5pm
-- "next Monday" -> upcoming Monday
-- "in 30 seconds" -> add 30 seconds
-- "tonight at 8" -> today at 8pm
-- "noon" or "midnight" -> today at 12pm or 12am
+Time parsing rules:
+- All times mentioned by the user are in THEIR timezone (${userTimezone})
+- Convert the time to UTC for the "time" field
+- "in 5 minutes" -> add 5 minutes to current UTC time
+- "in 2 hours" -> add 2 hours to current UTC time
+- "at 3pm" / "at 15:00" -> today at that time in ${userTimezone} (or tomorrow if time passed), converted to UTC
+- "tomorrow at 9am" -> next day at 9am in ${userTimezone}, converted to UTC
+- "at 5pm tomorrow" -> next day at 5pm in ${userTimezone}, converted to UTC
+- "next Monday" -> upcoming Monday in ${userTimezone}, converted to UTC
+- "tonight at 8" -> today at 8pm in ${userTimezone}, converted to UTC
+- "noon" or "midnight" -> today at 12pm or 12am in ${userTimezone}, converted to UTC
 
 Message extraction (what to remind about):
 - Extract the core action/task, keep it concise
@@ -63,19 +72,10 @@ Message extraction (what to remind about):
 - "Don't forget to take medicine" -> "take medicine"
 - "I need to submit the report by 5pm" -> "submit the report"
 
-Examples:
-- "Remind me to call mom at 3pm tomorrow" -> {"type": "reminder", "message": "call mom", "time": "2026-02-03T15:00:00Z"}
-- "Set a reminder for my meeting in 2 hours" -> {"type": "reminder", "message": "meeting", "time": "2026-02-02T16:30:00Z"}
-- "Schedule a task to buy groceries at 5pm" -> {"type": "reminder", "message": "buy groceries", "time": "2026-02-02T17:00:00Z"}
-- "In 10 minutes remind me to check the oven" -> {"type": "reminder", "message": "check the oven", "time": "2026-02-02T14:10:00Z"}
-- "Don't let me forget to call John at noon" -> {"type": "reminder", "message": "call John", "time": "2026-02-02T12:00:00Z"}
-- "I need to take my medicine in 30 minutes" -> {"type": "reminder", "message": "take medicine", "time": "2026-02-02T14:30:00Z"}
-
 If this is NOT a reminder request, respond with the text "NOT_REMINDER".
 
-Current time: ${new Date().toISOString()}
-Current day: ${new Date().toLocaleDateString('en-US', { weekday: 'long' })}
 User message: `;
+}
 
 function detectImageRequest(message: string): boolean {
   const imageKeywords = [
@@ -145,11 +145,12 @@ interface ReminderIntent {
 
 async function detectReminderIntent(
   message: string,
+  userTimezone: string,
 ): Promise<ReminderIntent | null> {
   try {
     const { text } = await generateText({
       model: textModel,
-      prompt: REMINDER_DETECTION_PROMPT + message,
+      prompt: getReminderDetectionPrompt(userTimezone) + message,
     });
 
     const trimmed = text.trim();
@@ -205,6 +206,7 @@ Keep your response concise but thorough, and cite sources when relevant.`;
 export async function askAI(
   message: string,
   userId: string,
+  userTimezone: string = "UTC",
 ): Promise<{ text?: string; imageUrl?: string; sources?: any[]; reminder?: ReminderIntent }> {
   const isImageRequest = detectImageRequest(message);
 
@@ -215,7 +217,7 @@ export async function askAI(
   }
 
   // Check if this is a reminder request (highest priority)
-  const reminderIntent = await detectReminderIntent(message);
+  const reminderIntent = await detectReminderIntent(message, userTimezone);
   if (reminderIntent) {
     return { reminder: reminderIntent };
   }

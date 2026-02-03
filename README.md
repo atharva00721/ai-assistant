@@ -7,6 +7,7 @@ A Telegram AI assistant with reminder and scheduled task functionality.
 - 🤖 AI-powered conversations using OpenAI-compatible API
 - 🔍 **Web search powered by Perplexity** for real-time information
 - 🔔 Reminder and scheduled task detection
+- 🌍 User-specific timezone support for accurate reminder times
 - 📋 List upcoming reminders with `/list`
 - ❌ Cancel reminders with `/cancel <id>`
 - ⏰ Snooze functionality with interactive buttons
@@ -93,6 +94,27 @@ The AI will detect the intent and create a reminder. You'll receive a notificati
 /cancel <id>
 ```
 
+**Set your timezone**:
+```
+/timezone America/New_York
+```
+
+**View current timezone**:
+```
+/timezone
+```
+
+Common timezones:
+- `America/New_York` (Eastern Time)
+- `America/Chicago` (Central Time)
+- `America/Denver` (Mountain Time)
+- `America/Los_Angeles` (Pacific Time)
+- `Europe/London`
+- `Europe/Paris`
+- `Asia/Tokyo`
+- `Asia/Shanghai`
+- `Australia/Sydney`
+
 **Snooze a reminder**: When you receive a reminder, use the inline buttons to snooze for 10 minutes or 1 hour.
 
 ### Web Search
@@ -114,6 +136,7 @@ Send any other message to have a normal conversation with the AI assistant.
 
 - `/list` - Show all upcoming reminders
 - `/cancel <id>` - Cancel a specific reminder
+- `/timezone [timezone]` - Set or view your timezone
 - Normal text - Chat with AI or create reminders
 
 ## Project Structure

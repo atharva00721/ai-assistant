@@ -18,6 +18,8 @@ bot.on("message:text", async (ctx) => {
   console.log(`Received message from ${userId}: ${message}`);
 
   try {
+    // Try to get timezone from Telegram user language (rough estimate)
+    // Users can set exact timezone with /timezone command
     const response = await fetch(`${apiBaseUrl}/ask`, {
       method: "POST",
       headers: { "content-type": "application/json" },
