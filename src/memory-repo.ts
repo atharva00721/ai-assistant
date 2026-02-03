@@ -1,8 +1,7 @@
 import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { db } from "./db.js";
 import { userMemories, type UserMemory } from "./schema.js";
-import { embedText } from "./embeddings.js";
-import { queryMemories, upsertMemoryVector } from "./pinecone-client.js";
+import { queryMemories, upsertMemoryRecord } from "./pinecone-client.js";
 
 type MemoryMetadata = Record<string, unknown>;
 
@@ -29,13 +28,10 @@ export async function createMemory(params: {
 
     if (!memory) return null;
 
-    const embedding = await embedText(memory.content);
-    if (embedding.length > 0) {
-      await upsertMemoryVector(memory.id.toString(), params.userId, params.kind, embedding, {
-        ...params.metadata,
-        importance: params.importance ?? 1,
-      });
-    }
+    await upsertMemoryRecord(memory.id.toString(), params.userId, params.kind, memory.content, {
+      ...params.metadata,
+      importance: params.importance ?? 1,
+    });
 
     return memory;
   } catch (error) {
@@ -51,14 +47,9 @@ export async function searchMemories(params: {
   topK?: number;
 }): Promise<UserMemory[]> {
   try {
-    const embedding = await embedText(params.query);
-    if (embedding.length === 0) {
-      return await fallbackSearchMemories(params);
-    }
-
     const matches = await queryMemories({
       userId: params.userId,
-      vector: embedding,
+      query: params.query,
       topK: params.topK ?? 8,
       kinds: params.kinds,
     });
