@@ -11,15 +11,28 @@ async function testReminderDetection() {
     "Hello, how are you?", // Should NOT be detected as reminder
   ];
 
+  const testTimezone = "America/New_York";
+  console.log(`Testing with timezone: ${testTimezone}\n`);
+
   for (const message of testCases) {
     console.log(`Testing: "${message}"`);
     try {
-      const result = await askAI(message, "test-user-123");
+      const result = await askAI(message, "test-user-123", testTimezone);
       
       if (result.reminder) {
         console.log("✓ Detected as REMINDER");
         console.log(`  Message: ${result.reminder.message}`);
-        console.log(`  Time: ${result.reminder.time}`);
+        console.log(`  Time (UTC): ${result.reminder.time}`);
+        const localTime = new Date(result.reminder.time).toLocaleString('en-US', {
+          timeZone: testTimezone,
+          weekday: 'short',
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true
+        });
+        console.log(`  Time (${testTimezone}): ${localTime}`);
       } else {
         console.log("✓ Normal conversation");
         console.log(`  Response: ${result.text?.substring(0, 100)}...`);

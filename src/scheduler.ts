@@ -1,5 +1,5 @@
 import { db } from "./db.js";
-import { reminders } from "./schema.js";
+import { reminders, users } from "./schema.js";
 import { lte, eq, and } from "drizzle-orm";
 import { Bot } from "grammy";
 
@@ -9,6 +9,18 @@ if (!token) {
 }
 
 const bot = new Bot(token);
+
+// Helper function to format time in user's timezone
+function formatTimeInTimezone(date: Date, timezone: string): string {
+  return date.toLocaleString('en-US', {
+    timeZone: timezone,
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+}
 
 async function checkAndSendReminders() {
   try {
@@ -24,14 +36,16 @@ async function checkAndSendReminders() {
 
     for (const reminder of dueReminders) {
       try {
+        // Get user timezone
+        const user = await db
+          .select()
+          .from(users)
+          .where(eq(users.userId, reminder.userId))
+          .limit(1);
+        
+        const userTimezone = user[0]?.timezone || "UTC";
         const scheduledTime = new Date(reminder.remindAt);
-        const timeStr = scheduledTime.toLocaleString('en-US', {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true
-        });
+        const timeStr = formatTimeInTimezone(scheduledTime, userTimezone);
 
         // Send reminder message via Telegram with inline keyboard
         await bot.api.sendMessage(

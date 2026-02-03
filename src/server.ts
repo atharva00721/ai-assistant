@@ -3,8 +3,61 @@ import { askAI } from "./ai.js";
 import { getWebhookHandler } from "./bot.js";
 import pkg from "../package.json" assert { type: "json" };
 import { db } from "./db.js";
-import { reminders } from "./schema.js";
+import { reminders, users } from "./schema.js";
 import { eq, and, gte } from "drizzle-orm";
+
+// Helper function to get or create user
+async function getOrCreateUser(userId: string, timezone?: string) {
+  const existingUser = await db
+    .select()
+    .from(users)
+    .where(eq(users.userId, userId))
+    .limit(1);
+
+  if (existingUser.length > 0) {
+    // Update timezone if provided
+    if (timezone && existingUser[0]?.timezone !== timezone) {
+      await db
+        .update(users)
+        .set({ timezone, updatedAt: new Date() })
+        .where(eq(users.userId, userId));
+      return { ...existingUser[0], timezone };
+    }
+    return existingUser[0];
+  }
+
+  // Create new user
+  const [newUser] = await db.insert(users).values({
+    userId,
+    timezone: timezone || "UTC",
+  }).returning();
+
+  return newUser;
+}
+
+// Helper function to format time in user's timezone
+function formatTimeInTimezone(date: Date, timezone: string): string {
+  return date.toLocaleString('en-US', {
+    timeZone: timezone,
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+}
+
+function formatTimeShortInTimezone(date: Date, timezone: string): string {
+  return date.toLocaleString('en-US', {
+    timeZone: timezone,
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true
+  });
+}
 
 const app = new Elysia()
   .post(
@@ -12,6 +65,7 @@ const app = new Elysia()
     async ({ body, set }) => {
       const message = body.message?.trim();
       const userId = body.userId?.trim();
+      const timezone = body.timezone?.trim();
       
       if (!message) {
         set.status = 400;
@@ -21,6 +75,34 @@ const app = new Elysia()
       if (!userId) {
         set.status = 400;
         return { reply: "User ID is required." };
+      }
+
+      // Get or create user with timezone
+      const user = await getOrCreateUser(userId, timezone);
+      const userTimezone = user?.timezone || "UTC";
+
+      // Handle /timezone command
+      if (message.toLowerCase().startsWith("/timezone")) {
+        const tzMatch = message.match(/\/timezone\s+(.+)/);
+        if (!tzMatch || !tzMatch[1]) {
+          return { reply: `Your current timezone is: ${userTimezone}\n\nTo change it, use: /timezone <timezone>\nExample: /timezone America/New_York\n\nCommon timezones:\n- America/New_York\n- America/Chicago\n- America/Denver\n- America/Los_Angeles\n- Europe/London\n- Europe/Paris\n- Asia/Tokyo\n- Asia/Shanghai\n- Australia/Sydney` };
+        }
+
+        const newTimezone = tzMatch[1].trim();
+        try {
+          // Test if timezone is valid
+          new Date().toLocaleString('en-US', { timeZone: newTimezone });
+          await db
+            .update(users)
+            .set({ timezone: newTimezone, updatedAt: new Date() })
+            .where(eq(users.userId, userId));
+          
+          const now = new Date();
+          const timeInTz = formatTimeInTimezone(now, newTimezone);
+          return { reply: `✅ Timezone updated to ${newTimezone}\nCurrent time: ${timeInTz}` };
+        } catch (error) {
+          return { reply: `Invalid timezone: ${newTimezone}\n\nPlease use a valid timezone like:\n- America/New_York\n- America/Los_Angeles\n- Europe/London\n- Asia/Tokyo` };
+        }
       }
 
       // Handle /list command
@@ -46,13 +128,7 @@ const app = new Elysia()
           let reply = `📋 Your upcoming reminders (${userReminders.length}):\n\n`;
           userReminders.forEach((reminder, idx) => {
             const time = new Date(reminder.remindAt);
-            const timeStr = time.toLocaleString('en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: 'numeric',
-              minute: '2-digit',
-              hour12: true
-            });
+            const timeStr = formatTimeShortInTimezone(time, userTimezone);
             reply += `${idx + 1}. "${reminder.message || ""}"\n   📅 ${timeStr}\n   🆔 ID: ${reminder.id}\n\n`;
           });
           reply += "Use /cancel <id> to cancel a reminder";
@@ -102,7 +178,7 @@ const app = new Elysia()
         }
       }
 
-      const result = await askAI(message, userId);
+      const result = await askAI(message, userId, userTimezone);
       
       // Check if this is a reminder intent
       if (result.reminder) {
@@ -116,14 +192,7 @@ const app = new Elysia()
           }).returning();
 
           const reminderTime = new Date(result.reminder.time);
-          const timeStr = reminderTime.toLocaleString('en-US', {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-          });
+          const timeStr = formatTimeInTimezone(reminderTime, userTimezone);
           
           return {
             reply: `✅ Reminder set!\n\n"${result.reminder.message}"\n📅 ${timeStr}\n🆔 ID: ${newReminder?.id}\n\nUse /list to see all reminders\nUse /cancel ${newReminder?.id} to cancel`,
@@ -145,6 +214,7 @@ const app = new Elysia()
       body: t.Object({
         message: t.String(),
         userId: t.String(),
+        timezone: t.Optional(t.String()),
       }),
     },
   )
