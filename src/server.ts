@@ -231,7 +231,7 @@ const app = new Elysia()
         }
       }
 
-      // Convert image URL to base64 if provided
+      // Convert image URL to base64 if provided, with fallback to original URL.
       let imageDataUrl: string | null = null;
       if (imageUrl) {
         try {
@@ -243,20 +243,28 @@ const app = new Elysia()
             const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
             imageDataUrl = `data:${contentType};base64,${imageBase64}`;
           } else {
-            console.error("Failed to download image:", imageResponse.status, imageResponse.statusText);
-            return { reply: "Sorry, I couldn't download the image. Please try sending it again." };
+            console.error(
+              "Failed to download image:",
+              imageResponse.status,
+              imageResponse.statusText,
+            );
           }
         } catch (error) {
           console.error("Error downloading image:", error);
-          return { reply: "Sorry, I couldn't download the image. Please try sending it again." };
         }
       }
-      
+
       if (imageUrl && !imageDataUrl) {
-        return { reply: "Sorry, I couldn't process that image. Please try sending it again." };
+        console.warn("Falling back to remote image URL for processing.");
       }
-      
-      const result = await askAI(message || "What's in this image?", userId, userTimezone, todoistToken, imageDataUrl);
+
+      const result = await askAI(
+        message || "What's in this image?",
+        userId,
+        userTimezone,
+        todoistToken,
+        imageDataUrl ?? imageUrl,
+      );
       
       if (result.todoist) {
         return { reply: result.todoist };

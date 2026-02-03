@@ -143,6 +143,11 @@ function normalizeAssistantJson(text: string): string {
   return trimmed;
 }
 
+function isSupportedImageSource(imageUrl: string | null | undefined): boolean {
+  if (!imageUrl) return false;
+  return imageUrl.startsWith("data:") || imageUrl.startsWith("http");
+}
+
 // Explicit "search the web" intent — use Perplexity. Check this BEFORE Todoist.
 function detectExplicitWebSearch(message: string): boolean {
   const lower = message.toLowerCase().trim();
@@ -340,7 +345,7 @@ Find current, accurate info and reply in plain language—like you’re explaini
  * then run a web search and have the main LLM answer using those results.
  */
 async function searchImageOnWeb(
-  imageDataUrl: string,
+  imageSource: string,
   userMessage: string,
   userId: string,
 ): Promise<string> {
@@ -363,7 +368,7 @@ async function searchImageOnWeb(
           },
           {
             type: "image",
-            image: imageDataUrl,
+            image: imageSource,
           },
         ],
       },
@@ -412,13 +417,13 @@ export async function askAI(
   }
 
   // If we got an image, remember it so the user can say "search this" afterwards.
-  if (imageUrl && imageUrl.startsWith("data:")) {
-    lastImages.set(userId, imageUrl);
+  if (isSupportedImageSource(imageUrl)) {
+    lastImages.set(userId, imageUrl!);
   }
 
   // Image + explicit search intent in the SAME message (caption like "search this", "google this shampoo").
   const imageSearchCaptionIntent =
-    !!imageUrl &&
+    isSupportedImageSource(imageUrl) &&
     !!searchModel &&
     (detectExplicitWebSearch(trimmedMessage) ||
       /\b(search|google|look\s+up|price|buy|reviews?|where to (buy|get))/i.test(
@@ -459,10 +464,10 @@ export async function askAI(
   // Image understanding (vision) - user sent a photo but is NOT asking for web search.
   if (imageUrl) {
     try {
-      // Ensure imageUrl is a valid data URL
-      if (!imageUrl.startsWith("data:")) {
+      // Ensure imageUrl is a supported data URL or http(s) URL
+      if (!isSupportedImageSource(imageUrl)) {
         console.error(
-          "Invalid image format - expected data URL, got:",
+          "Invalid image format - expected data URL or http(s) URL, got:",
           imageUrl.substring(0, 100),
         );
         return {
