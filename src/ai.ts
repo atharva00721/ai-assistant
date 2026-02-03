@@ -332,6 +332,12 @@ export async function askAI(
   // Image understanding (vision) - user sent a photo
   if (imageUrl) {
     try {
+      // Ensure imageUrl is a valid data URL
+      if (!imageUrl.startsWith("data:")) {
+        console.error("Invalid image format - expected data URL, got:", imageUrl.substring(0, 100));
+        return { text: "Sorry, I couldn't process that image format. Please try sending the image again." };
+      }
+      
       const userPrompt = message.trim() || "What's in this image?";
       let history = conversations.get(userId) || [];
       
@@ -359,8 +365,12 @@ export async function askAI(
       conversations.set(userId, history);
       
       return { text };
-    } catch (error) {
+    } catch (error: any) {
       console.error("Vision error:", error);
+      const errorMsg = error?.message || String(error);
+      if (errorMsg.includes("图片输入格式") || errorMsg.includes("image") || errorMsg.includes("format")) {
+        return { text: "Sorry, I couldn't process that image format. The image might be corrupted or in an unsupported format. Please try sending a different image." };
+      }
       return { text: "Sorry, I couldn't analyze that image. Try sending it again or describe what you need." };
     }
   }

@@ -231,7 +231,32 @@ const app = new Elysia()
         }
       }
 
-      const result = await askAI(message || "What's in this image?", userId, userTimezone, todoistToken, imageUrl || null);
+      // Convert image URL to base64 if provided
+      let imageDataUrl: string | null = null;
+      if (imageUrl) {
+        try {
+          const imageResponse = await fetch(imageUrl);
+          if (imageResponse.ok) {
+            const imageBuffer = await imageResponse.arrayBuffer();
+            const imageBase64 = Buffer.from(imageBuffer).toString("base64");
+            // Detect content type from response or default to jpeg
+            const contentType = imageResponse.headers.get("content-type") || "image/jpeg";
+            imageDataUrl = `data:${contentType};base64,${imageBase64}`;
+          } else {
+            console.error("Failed to download image:", imageResponse.status, imageResponse.statusText);
+            return { reply: "Sorry, I couldn't download the image. Please try sending it again." };
+          }
+        } catch (error) {
+          console.error("Error downloading image:", error);
+          return { reply: "Sorry, I couldn't download the image. Please try sending it again." };
+        }
+      }
+      
+      if (imageUrl && !imageDataUrl) {
+        return { reply: "Sorry, I couldn't process that image. Please try sending it again." };
+      }
+      
+      const result = await askAI(message || "What's in this image?", userId, userTimezone, todoistToken, imageDataUrl);
       
       if (result.todoist) {
         return { reply: result.todoist };
