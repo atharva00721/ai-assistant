@@ -16,7 +16,7 @@ const openai = createOpenAI({
   baseURL,
   apiKey,
 });
-const textModel = openai.chat("openai-gpt-oss-20b-1-0");
+const textModel = openai.chat("glm-4.5v");
 
 // Perplexity client for web search
 const perplexityApiKey = Bun.env.PERPLEXITY_API_KEY;
