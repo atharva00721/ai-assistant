@@ -259,13 +259,23 @@ const app = new Elysia()
         console.warn("Falling back to remote image URL for processing.");
       }
 
-      const result = await askAI(
-        message || "What's in this image?",
-        userId,
-        userTimezone,
-        todoistToken,
-        imageDataUrl ?? imageUrl,
-      );
+      let result;
+      try {
+        result = await askAI(
+          message || "What's in this image?",
+          userId,
+          userTimezone,
+          todoistToken,
+          imageDataUrl ?? imageUrl,
+        );
+      } catch (error) {
+        console.error("AI request failed:", error);
+        set.status = 500;
+        return {
+          reply:
+            "Sorry, I'm having trouble responding right now. Please try again in a moment.",
+        };
+      }
       
       if (result.todoist) {
         return { reply: result.todoist };
