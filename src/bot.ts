@@ -1,4 +1,5 @@
 import { Bot, webhookCallback } from "grammy";
+import { createUpdateDeduper } from "./telegram-dedupe.js";
 
 const apiBaseUrl = Bun.env.API_BASE_URL || "http://localhost:3000";
 
@@ -13,6 +14,12 @@ export function getWebhookHandler() {
   }
 
   const bot = new Bot(token);
+  const isDuplicateUpdate = createUpdateDeduper();
+
+  bot.use((ctx, next) => {
+    if (isDuplicateUpdate(ctx.update.update_id)) return;
+    return next();
+  });
 
   bot.command("start", async (ctx) => {
     const webAppUrl = `${apiBaseUrl}/app`;
