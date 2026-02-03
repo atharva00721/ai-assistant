@@ -10,9 +10,11 @@
     "db:init": "bun run scripts/init-db.ts",
     "db:migrate": "bun run scripts/migrate.ts",
     "db:add-users-table": "bun run scripts/add-users-table.ts",
+    "db:add-memory-tables": "bun run scripts/add-memory-tables.ts",
     "dev": "bun run src/server.ts",
     "test:reminder": "bun run scripts/test-reminder.ts",
-    "test:search": "bun run scripts/test-search.ts"
+    "test:search": "bun run scripts/test-search.ts",
+    "test:memory": "bun run scripts/test-memory.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

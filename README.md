@@ -6,6 +6,7 @@ A Telegram AI assistant with reminder and scheduled task functionality.
 
 - 🤖 AI-powered conversations using OpenAI-compatible API
 - 🔍 **Web search powered by Perplexity** for real-time information
+- 🧠 **Long-term memory system** - remembers conversations and learns about you
 - 🔔 Reminder and scheduled task detection
 - 🌍 User-specific timezone support for accurate reminder times
 - 📋 List upcoming reminders with `/list`
@@ -16,6 +17,8 @@ A Telegram AI assistant with reminder and scheduled task functionality.
 - 📱 Automatic reminder notifications via Telegram
 - 💾 PostgreSQL database for persistent storage
 - ⚡ Efficient scheduler for reminder delivery
+- 🔍 Semantic search through past conversations
+- 📝 Automatic extraction of important facts and preferences
 
 ## Stack
 
@@ -49,7 +52,7 @@ bun install
 
 ## Database Setup
 
-Initialize the database schema (creates both `users` and `reminders` tables):
+Initialize the database schema (creates `users`, `reminders`, `conversations`, and `memories` tables):
 
 ```bash
 bun run db:init
@@ -61,11 +64,17 @@ Or run migrations:
 bun run db:migrate
 ```
 
-If you're upgrading from an older version that only had the `reminders` table, run:
+If you're upgrading from an older version:
 
 ```bash
+# Add users table (if missing)
 bun run db:add-users-table
+
+# Add long-term memory tables (conversations and memories)
+bun run db:add-memory-tables
 ```
+
+**Note**: The long-term memory feature requires the `pgvector` extension for PostgreSQL. The migration script will attempt to enable it automatically.
 
 ## Running the Application
 
@@ -129,6 +138,33 @@ Common timezones:
 
 **Snooze a reminder**: When you receive a reminder, use the inline buttons to snooze for 10 minutes or 1 hour.
 
+### Long-Term Memory
+
+The assistant now remembers your conversations and learns about you over time!
+
+**View what the bot remembers**:
+```
+/memories
+```
+
+Shows a summary of stored facts, preferences, and context about you.
+
+**Manually extract memories**:
+```
+/extract
+```
+
+Analyzes recent conversations and extracts important information. Memory extraction also happens automatically every 10 messages.
+
+**Features**:
+- 💾 Persistent conversation storage
+- 🔍 Semantic search through past conversations
+- 🧠 Automatic fact and preference extraction
+- 📝 Context-aware responses based on your history
+- 🔒 All data stored in your private database
+
+See [LONG_TERM_MEMORY.md](LONG_TERM_MEMORY.md) for detailed documentation.
+
 ### Web Search
 
 Ask informational or search-related questions to get real-time information from the web:
@@ -149,21 +185,26 @@ Send any other message to have a normal conversation with the AI assistant.
 - `/list` - Show all upcoming reminders
 - `/cancel <id>` - Cancel a specific reminder
 - `/timezone [timezone]` - Set or view your timezone
+- `/memories` - View what the bot remembers about you
+- `/extract` - Manually extract memories from recent conversations
 - Normal text - Chat with AI or create reminders
 
 ## Project Structure
 
 ```
 src/
-  ai.ts        - AI logic with Perplexity search, reminder detection, and conversations
+  ai.ts        - AI logic with Perplexity search, reminder detection, memory integration, and conversations
+  memory.ts    - Long-term memory system with embeddings and semantic search
   bot.ts       - Telegram bot integration
   db.ts        - Database connection
-  schema.ts    - Database schema definitions
-  server.ts    - Elysia API server with /ask endpoint
+  schema.ts    - Database schema definitions (users, reminders, conversations, memories)
+  server.ts    - Elysia API server with /ask endpoint and memory commands
   scheduler.ts - Bun.cron reminder scheduler
 scripts/
-  init-db.ts         - Database initialization script (creates users and reminders tables)
-  migrate.ts         - Run Drizzle migrations
-  add-users-table.ts - Add missing users table (for upgrades)
-  test-search.ts     - Test script for web search functionality
+  init-db.ts            - Database initialization script
+  migrate.ts            - Run Drizzle migrations
+  add-users-table.ts    - Add missing users table (for upgrades)
+  add-memory-tables.ts  - Add long-term memory tables (conversations and memories)
+  test-search.ts        - Test script for web search functionality
+  test-memory.ts        - Test script for memory system
 ```

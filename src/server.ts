@@ -1,5 +1,5 @@
 import { Elysia, t } from "elysia";
-import { askAI } from "./ai.js";
+import { askAI, getMemorySummary, extractRecentMemories } from "./ai.js";
 import { getWebhookHandler } from "./bot.js";
 import pkg from "../package.json" assert { type: "json" };
 import { db } from "./db.js";
@@ -175,6 +175,33 @@ const app = new Elysia()
           console.error("Error canceling reminder:", error);
           set.status = 500;
           return { reply: "Failed to cancel reminder. Please try again." };
+        }
+      }
+
+      // Handle /memories command - show what the bot remembers about the user
+      if (message.toLowerCase() === "/memories" || message.toLowerCase() === "/memory") {
+        try {
+          const summary = await getMemorySummary(userId);
+          return { reply: `🧠 Memory Summary\n\n${summary}` };
+        } catch (error) {
+          console.error("Error getting memories:", error);
+          set.status = 500;
+          return { reply: "Failed to retrieve memories. Please try again." };
+        }
+      }
+
+      // Handle /extract command - manually trigger memory extraction
+      if (message.toLowerCase() === "/extract") {
+        try {
+          const count = await extractRecentMemories(userId);
+          if (count === 0) {
+            return { reply: "No recent conversations to extract memories from." };
+          }
+          return { reply: `✅ Analyzed ${count} recent messages and extracted important memories!` };
+        } catch (error) {
+          console.error("Error extracting memories:", error);
+          set.status = 500;
+          return { reply: "Failed to extract memories. Please try again." };
         }
       }
 
