@@ -3,8 +3,8 @@ import { askAI } from "./ai.js";
 import { getWebhookHandler } from "./bot.js";
 import pkg from "../package.json" assert { type: "json" };
 import { db } from "./db.js";
-import { reminders, users } from "./schema.js";
-import { eq, and, gte } from "drizzle-orm";
+import { reminders, users, notes, habitLogs } from "./schema.js";
+import { eq, and, gte, lt, sql, desc, like } from "drizzle-orm";
 
 // Helper function to get or create user
 async function getOrCreateUser(userId: string, timezone?: string) {
@@ -223,9 +223,114 @@ const app = new Elysia()
 
       const result = await askAI(message, userId, userTimezone, todoistToken);
       
-      // Check if this is a Todoist response
       if (result.todoist) {
         return { reply: result.todoist };
+      }
+
+      // Quick notes: save or search
+      if (result.note) {
+        try {
+          if (result.note.action === "save" && result.note.content) {
+            await db.insert(notes).values({ userId, content: result.note.content });
+            return { reply: `📝 Saved: "${result.note.content.slice(0, 80)}${result.note.content.length > 80 ? "…" : ""}"` };
+          }
+          if (result.note.action === "search" && result.note.query) {
+            const found = await db
+              .select({ content: notes.content, createdAt: notes.createdAt })
+              .from(notes)
+              .where(and(eq(notes.userId, userId), like(notes.content, `%${result.note.query}%`)))
+              .orderBy(desc(notes.createdAt))
+              .limit(10);
+            if (found.length === 0) return { reply: `📝 No notes found about "${result.note.query}".` };
+            const lines = found.map((n, i) => `${i + 1}. ${n.content.slice(0, 120)}${n.content.length > 120 ? "…" : ""}`);
+            return { reply: `📝 Notes about "${result.note.query}":\n\n${lines.join("\n")}` };
+          }
+        } catch (err) {
+          console.error("Notes error:", err);
+          set.status = 500;
+          return { reply: "Failed to save or search notes." };
+        }
+      }
+
+      // Habit: log, check today, or streak
+      if (result.habit) {
+        try {
+          const name = result.habit.habitName;
+          const todayStart = new Date();
+          todayStart.setUTCHours(0, 0, 0, 0);
+          const todayEnd = new Date(todayStart);
+          todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
+          if (result.habit.action === "log") {
+            await db.insert(habitLogs).values({ userId, habitName: name });
+            return { reply: `✅ Logged: ${name}` };
+          }
+          if (result.habit.action === "check") {
+            const todayLogs = await db
+              .select()
+              .from(habitLogs)
+              .where(
+                and(
+                  eq(habitLogs.userId, userId),
+                  eq(habitLogs.habitName, name),
+                  gte(habitLogs.loggedAt, todayStart),
+                  lt(habitLogs.loggedAt, todayEnd)
+                )
+              );
+            return { reply: todayLogs.length > 0 ? `✅ Yes, you logged "${name}" today.` : `❌ No "${name}" logged today yet.` };
+          }
+          if (result.habit.action === "streak") {
+            const allLogs = await db
+              .select({ loggedAt: habitLogs.loggedAt })
+              .from(habitLogs)
+              .where(and(eq(habitLogs.userId, userId), eq(habitLogs.habitName, name)))
+              .orderBy(desc(habitLogs.loggedAt));
+            const byDay = new Set<string>();
+            for (const row of allLogs) {
+              const d = new Date(row.loggedAt);
+              byDay.add(`${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`);
+            }
+            const sortedDays = [...byDay].sort().reverse();
+            let streak = 0;
+            const todayStr = `${todayStart.getUTCFullYear()}-${todayStart.getUTCMonth()}-${todayStart.getUTCDate()}`;
+            for (let i = 0; i < sortedDays.length; i++) {
+              const expect = new Date(todayStart);
+              expect.setUTCDate(expect.getUTCDate() - i);
+              const expectStr = `${expect.getUTCFullYear()}-${expect.getUTCMonth()}-${expect.getUTCDate()}`;
+              if (sortedDays[i] === expectStr) streak++;
+              else break;
+            }
+            return { reply: `🔥 ${name} streak: ${streak} day${streak === 1 ? "" : "s"}` };
+          }
+        } catch (err) {
+          console.error("Habit error:", err);
+          set.status = 500;
+          return { reply: "Failed to update habit." };
+        }
+      }
+
+      if (result.weather) {
+        return { reply: result.weather };
+      }
+
+      // Focus timer → create reminder
+      if (result.focus) {
+        try {
+          const remindAt = new Date(Date.now() + result.focus.durationMinutes * 60 * 1000);
+          const [newReminder] = await db.insert(reminders).values({
+            userId,
+            message: result.focus.message,
+            remindAt,
+            isDone: false,
+          }).returning();
+          const timeStr = formatTimeShortInTimezone(remindAt, userTimezone);
+          return {
+            reply: `⏱️ Focus timer: ${result.focus.durationMinutes} min\n📅 I’ll remind you at ${timeStr}\n\nUse /list or /cancel ${newReminder?.id} if needed.`,
+          };
+        } catch (err) {
+          console.error("Focus reminder error:", err);
+          set.status = 500;
+          return { reply: "Failed to set focus timer." };
+        }
       }
       
       // Check if this is a reminder intent

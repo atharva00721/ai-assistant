@@ -34,6 +34,26 @@ async function ensureTablesExist(sql: any) {
     )
   `;
   
+  // Create notes table if it doesn't exist
+  await sql`
+    CREATE TABLE IF NOT EXISTS notes (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+    )
+  `;
+  
+  // Create habit_logs table if it doesn't exist
+  await sql`
+    CREATE TABLE IF NOT EXISTS habit_logs (
+      id SERIAL PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      habit_name TEXT NOT NULL,
+      logged_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+    )
+  `;
+  
   console.log("✅ Tables ensured!");
 }
 

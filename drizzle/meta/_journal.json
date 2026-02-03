@@ -15,6 +15,13 @@
       "when": 1770069872024,
       "tag": "0001_add_todoist_token",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770070000000,
+      "tag": "0002_notes_and_habits",
+      "breakpoints": true
     }
   ]
 }

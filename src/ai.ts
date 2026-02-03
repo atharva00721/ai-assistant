@@ -138,6 +138,91 @@ function detectSearchIntent(message: string): boolean {
   return hasSearchKeyword || isQuestion;
 }
 
+// --- Quick notes / scratchpad ---
+export interface NoteIntent {
+  action: "save" | "search";
+  content?: string;
+  query?: string;
+}
+
+function detectNoteIntent(message: string): NoteIntent | null {
+  const lower = message.toLowerCase().trim();
+  const savePrefixes = ["remember that ", "remember: ", "save note ", "note that ", "note: ", "save: ", "remember "];
+  for (const p of savePrefixes) {
+    if (lower.startsWith(p)) {
+      const content = message.slice(p.length).trim();
+      if (content.length > 0) return { action: "save", content };
+    }
+  }
+  if (lower.startsWith("remember ") && !lower.includes("?")) {
+    const content = message.slice(9).trim();
+    if (content.length > 0) return { action: "save", content };
+  }
+  const searchPatterns = [
+    /what did I save about (.+)/i,
+    /what did I note about (.+)/i,
+    /my notes about (.+)/i,
+    /recall (.+)/i,
+    /what (?:do I have )?saved about (.+)/i,
+    /find (?:my )?note about (.+)/i,
+  ];
+  for (const re of searchPatterns) {
+    const m = message.match(re);
+    if (m?.[1]) return { action: "search", query: m[1].trim() };
+  }
+  if (lower.includes("what did i save") || lower.includes("my notes about")) {
+    const q = message.replace(/\?$/, "").trim().split(/\s+about\s+/i)[1]?.trim();
+    if (q) return { action: "search", query: q };
+  }
+  return null;
+}
+
+// --- Habit log ---
+export interface HabitIntent {
+  action: "log" | "check" | "streak";
+  habitName: string;
+}
+
+function detectHabitIntent(message: string): HabitIntent | null {
+  const lower = message.toLowerCase().trim();
+  const logMatch = message.match(/\b(?:log|logged)\s+(.+?)(?:\s+today)?$/i) || message.match(/\blog\s+(.+)/i);
+  if (logMatch?.[1]) return { action: "log", habitName: logMatch[1].trim() };
+  const didIMatch = message.match(/\bdid I\s+(.+?)\s+today\??/i);
+  if (didIMatch?.[1]) return { action: "check", habitName: didIMatch[1].trim() };
+  const streakMatch = message.match(/(?:my\s+)?(.+?)\s+streak\??/i) || message.match(/\bstreak\s+(?:for\s+)?(.+?)\??$/i);
+  if (streakMatch?.[1]) return { action: "streak", habitName: streakMatch[1].trim() };
+  if (lower.includes("habit") && (lower.includes("log") || lower.includes("did i"))) {
+    const parts = message.split(/\s+(?:today|log|did i)\s+/i);
+    const name = parts[1]?.trim() || parts[0]?.replace(/habit|log|did i/gi, "").trim();
+    if (name && name.length > 1) {
+      if (lower.includes("did i")) return { action: "check", habitName: name };
+      return { action: "log", habitName: name };
+    }
+  }
+  return null;
+}
+
+// --- Weather (first-class intent, uses web search) ---
+function detectWeatherIntent(message: string): boolean {
+  const lower = message.toLowerCase();
+  const weatherWords = ["weather", "temperature", "forecast", "how hot", "how cold", "will it rain", "humidity", "what's the temp"];
+  return weatherWords.some((w) => lower.includes(w)) || /weather\s+(?:in|for|today)?/i.test(message);
+}
+
+// --- Focus timer (creates reminder) ---
+export interface FocusIntent {
+  message: string;
+  durationMinutes: number;
+}
+
+function detectFocusIntent(message: string): FocusIntent | null {
+  const lower = message.toLowerCase();
+  if (!/\b(?:focus|pomodoro|timer|concentrate|deep work)\b/i.test(lower)) return null;
+  const minMatch = message.match(/(\d+)\s*min(?:ute)?s?/i) || message.match(/(\d+)\s*m\b/i);
+  const duration = minMatch?.[1] ? Math.min(120, Math.max(1, parseInt(minMatch[1], 10))) : 25;
+  return { message: "Focus session done – great job!", durationMinutes: duration };
+}
+
 interface ReminderIntent {
   type: "reminder";
   message: string;
@@ -209,7 +294,17 @@ export async function askAI(
   userId: string,
   userTimezone: string = "UTC",
   todoistToken?: string | null,
-): Promise<{ text?: string; imageUrl?: string; sources?: any[]; reminder?: ReminderIntent; todoist?: string }> {
+): Promise<{
+  text?: string;
+  imageUrl?: string;
+  sources?: any[];
+  reminder?: ReminderIntent;
+  todoist?: string;
+  note?: NoteIntent;
+  habit?: HabitIntent;
+  weather?: string;
+  focus?: FocusIntent;
+}> {
   const isImageRequest = detectImageRequest(message);
 
   if (isImageRequest) {
@@ -226,6 +321,24 @@ export async function askAI(
       return { todoist: todoistResponse };
     }
   }
+
+  // Quick notes / scratchpad
+  const noteIntent = detectNoteIntent(message);
+  if (noteIntent) return { note: noteIntent };
+
+  // Habit log / check / streak
+  const habitIntent = detectHabitIntent(message);
+  if (habitIntent) return { habit: habitIntent };
+
+  // Weather (first-class intent → web search)
+  if (detectWeatherIntent(message) && searchModel) {
+    const weatherResult = await searchWeb(`Current weather and forecast: ${message}`);
+    return { weather: weatherResult };
+  }
+
+  // Focus timer → server will create reminder
+  const focusIntent = detectFocusIntent(message);
+  if (focusIntent) return { focus: focusIntent };
 
   // Check if this is a reminder request
   const reminderIntent = await detectReminderIntent(message, userTimezone);
