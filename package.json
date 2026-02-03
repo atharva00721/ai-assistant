@@ -12,6 +12,7 @@
     "db:migrate": "bun run scripts/migrate.ts",
     "db:add-users-table": "bun run scripts/add-users-table.ts",
     "dev": "bun run src/server.ts",
+    "test": "bun test",
     "test:reminder": "bun run scripts/test-reminder.ts",
     "test:search": "bun run scripts/test-search.ts",
     "test:pinecone": "bun run scripts/test-pinecone.ts"

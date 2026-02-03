@@ -1,97 +1,84 @@
-import { db } from "./db.js";
-import { reminders, users } from "./schema.js";
-import { lte, eq, and } from "drizzle-orm";
+import { db } from "./shared/db/index.js";
+import { reminders, users } from "./shared/db/schema.js";
+import { and, eq, lte } from "drizzle-orm";
 import { Bot } from "grammy";
 
-const token = Bun.env.BOT_TOKEN;
-if (!token) {
-  throw new Error("BOT_TOKEN is required for scheduler.");
+const botToken = Bun.env.BOT_TOKEN;
+if (!botToken) {
+  throw new Error("BOT_TOKEN environment variable is required");
 }
 
-const bot = new Bot(token);
+const bot = new Bot(botToken);
 
-// Helper function to format time in user's timezone
-function formatTimeInTimezone(date: Date, timezone: string): string {
-  return date.toLocaleString('en-US', {
-    timeZone: timezone,
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  });
-}
-
-async function checkAndSendReminders() {
+async function sendReminder(reminder: any, user: any) {
   try {
     const now = new Date();
+    const remindAt = new Date(reminder.remindAt);
+    const minutesPast = Math.floor((now.getTime() - remindAt.getTime()) / 1000 / 60);
 
-    // Query for reminders that are due and not done
-    const dueReminders = await db
-      .select()
-      .from(reminders)
-      .where(and(lte(reminders.remindAt, now), eq(reminders.isDone, false)));
+    const messageText = `🔔 Reminder: ${reminder.message}`;
 
-    console.log(`Found ${dueReminders.length} due reminders`);
+    const inlineKeyboard = {
+      inline_keyboard: [
+        [
+          { text: "⏰ Snooze 10 min", callback_data: `snooze_${reminder.id}_10` },
+          { text: "🕐 Snooze 1 hour", callback_data: `snooze_${reminder.id}_60` },
+        ],
+        [{ text: "✅ Done", callback_data: `done_${reminder.id}` }],
+      ],
+    };
 
-    for (const reminder of dueReminders) {
-      try {
-        // Get user timezone
-        const user = await db
-          .select()
-          .from(users)
-          .where(eq(users.userId, reminder.userId))
-          .limit(1);
-        
-        const userTimezone = user[0]?.timezone || "Asia/Kolkata";
-        const scheduledTime = new Date(reminder.remindAt);
-        const timeStr = formatTimeInTimezone(scheduledTime, userTimezone);
+    await bot.api.sendMessage(reminder.userId, messageText, {
+      reply_markup: inlineKeyboard,
+    });
 
-        // Send reminder message via Telegram with inline keyboard
-        await bot.api.sendMessage(
-          reminder.userId,
-          `🔔 *REMINDER*\n\n"${reminder.message}"\n\n📅 Scheduled: ${timeStr}\n🆔 ID: ${reminder.id}`,
-          {
-            parse_mode: "Markdown",
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  { text: "⏰ Snooze 10 min", callback_data: `snooze_${reminder.id}_10` },
-                  { text: "⏰ Snooze 1 hour", callback_data: `snooze_${reminder.id}_60` },
-                ],
-                [
-                  { text: "✅ Done", callback_data: `done_${reminder.id}` },
-                ]
-              ]
-            }
-          }
-        );
+    console.log(
+      `Sent reminder ${reminder.id} to user ${reminder.userId} (${minutesPast} minutes late)`
+    );
 
-        // Mark as done
-        await db
-          .update(reminders)
-          .set({ isDone: true })
-          .where(eq(reminders.id, reminder.id));
-
-        console.log(`Sent reminder ${reminder.id} to user ${reminder.userId}`);
-      } catch (error) {
-        console.error(`Failed to send reminder ${reminder.id}:`, error);
-        // Continue to next reminder even if this one fails
-      }
-    }
+    await db
+      .update(reminders)
+      .set({ isDone: true })
+      .where(eq(reminders.id, reminder.id));
   } catch (error) {
-    console.error("Error in checkAndSendReminders:", error);
+    console.error("Failed to send reminder:", error);
   }
 }
 
-// Run every minute using setInterval (60 seconds)
-// Note: Bun.cron exists but may not be in @types/bun yet
-const INTERVAL_MS = 60 * 1000; // 60 seconds
+async function processReminders() {
+  try {
+    const now = new Date();
 
-console.log("Reminder scheduler started - checking every minute");
+    const dueReminders = await db
+      .select()
+      .from(reminders)
+      .where(and(eq(reminders.isDone, false), lte(reminders.remindAt, now)));
 
-// Run immediately on startup
-checkAndSendReminders();
+    if (dueReminders.length === 0) return;
 
-// Then run every minute
-setInterval(checkAndSendReminders, INTERVAL_MS);
+    console.log(`Processing ${dueReminders.length} due reminders`);
+
+    for (const reminder of dueReminders) {
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.userId, reminder.userId))
+        .limit(1);
+
+      if (!user) {
+        console.warn(`User not found for reminder ${reminder.id}`);
+        continue;
+      }
+
+      await sendReminder(reminder, user);
+    }
+  } catch (error) {
+    console.error("Scheduler error:", error);
+  }
+}
+
+const interval = 30 * 1000;
+console.log("🚀 Reminder scheduler started - checking every 30 seconds");
+
+processReminders();
+setInterval(processReminders, interval);
