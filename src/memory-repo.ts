@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { db } from "./db.js";
 import { userMemories, type UserMemory } from "./schema.js";
 import { embedText } from "./embeddings.js";
@@ -52,7 +52,9 @@ export async function searchMemories(params: {
 }): Promise<UserMemory[]> {
   try {
     const embedding = await embedText(params.query);
-    if (embedding.length === 0) return [];
+    if (embedding.length === 0) {
+      return await fallbackSearchMemories(params);
+    }
 
     const matches = await queryMemories({
       userId: params.userId,
@@ -61,7 +63,9 @@ export async function searchMemories(params: {
       kinds: params.kinds,
     });
 
-    if (matches.length === 0) return [];
+    if (matches.length === 0) {
+      return await fallbackSearchMemories(params);
+    }
 
     const ids = matches.map((match) => Number(match.id)).filter((id) => Number.isFinite(id));
     if (ids.length === 0) return [];
@@ -77,8 +81,51 @@ export async function searchMemories(params: {
     return sorted;
   } catch (error) {
     console.error("Failed to search memories:", error);
-    return [];
+    return await fallbackSearchMemories(params);
   }
+}
+
+async function fallbackSearchMemories(params: {
+  userId: string;
+  query: string;
+  kinds?: string[];
+  topK?: number;
+}): Promise<UserMemory[]> {
+  const raw = params.query.toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, " ");
+  const tokens = Array.from(
+    new Set(
+      raw
+        .split(/\s+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length > 2),
+    ),
+  ).slice(0, 6);
+  const patterns = [params.query.trim(), ...tokens]
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  if (patterns.length === 0) return [];
+
+  const filters = patterns.map((pattern) => ilike(userMemories.content, `%${pattern}%`));
+  const contentFilter = filters.length > 1 ? or(...filters) : filters[0]!;
+
+  const whereClause =
+    params.kinds && params.kinds.length > 0
+      ? and(
+          eq(userMemories.userId, params.userId),
+          inArray(userMemories.kind, params.kinds),
+          contentFilter,
+        )
+      : and(eq(userMemories.userId, params.userId), contentFilter);
+
+  const rows = await db
+    .select()
+    .from(userMemories)
+    .where(whereClause)
+    .orderBy(desc(userMemories.importance), desc(userMemories.updatedAt))
+    .limit(params.topK ?? 8);
+
+  return rows;
 }
 
 export async function touchMemories(ids: number[]): Promise<void> {
