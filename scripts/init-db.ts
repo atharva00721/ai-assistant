@@ -3,6 +3,18 @@ import { sql } from "drizzle-orm";
 
 async function initDatabase() {
   try {
+    console.log("Creating users table...");
+    
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL UNIQUE,
+        timezone TEXT NOT NULL DEFAULT 'UTC',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
     console.log("Creating reminders table...");
     
     await db.execute(sql`

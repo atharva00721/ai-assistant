@@ -49,10 +49,22 @@ bun install
 
 ## Database Setup
 
-Initialize the database schema:
+Initialize the database schema (creates both `users` and `reminders` tables):
 
 ```bash
-bun run scripts/init-db.ts
+bun run db:init
+```
+
+Or run migrations:
+
+```bash
+bun run db:migrate
+```
+
+If you're upgrading from an older version that only had the `reminders` table, run:
+
+```bash
+bun run db:add-users-table
 ```
 
 ## Running the Application
@@ -150,6 +162,8 @@ src/
   server.ts    - Elysia API server with /ask endpoint
   scheduler.ts - Bun.cron reminder scheduler
 scripts/
-  init-db.ts   - Database initialization script
-  test-search.ts - Test script for web search functionality
+  init-db.ts         - Database initialization script (creates users and reminders tables)
+  migrate.ts         - Run Drizzle migrations
+  add-users-table.ts - Add missing users table (for upgrades)
+  test-search.ts     - Test script for web search functionality
 ```
