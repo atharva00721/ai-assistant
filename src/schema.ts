@@ -3,7 +3,7 @@ import { pgTable, serial, text, timestamp, boolean, bigint, jsonb, integer } fro
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull().unique(),
-  timezone: text("timezone").notNull().default("UTC"),
+  timezone: text("timezone").notNull().default("Asia/Kolkata"),
   todoistToken: text("todoist_token"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),

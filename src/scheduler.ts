@@ -43,7 +43,7 @@ async function checkAndSendReminders() {
           .where(eq(users.userId, reminder.userId))
           .limit(1);
         
-        const userTimezone = user[0]?.timezone || "UTC";
+        const userTimezone = user[0]?.timezone || "Asia/Kolkata";
         const scheduledTime = new Date(reminder.remindAt);
         const timeStr = formatTimeInTimezone(scheduledTime, userTimezone);
 

@@ -411,7 +411,7 @@ async function searchImageOnWeb(
 export async function askAI(
   message: string,
   userId: string,
-  userTimezone: string = "UTC",
+  userTimezone: string = "Asia/Kolkata",
   todoistToken?: string | null,
   imageUrl?: string | null,
 ): Promise<{

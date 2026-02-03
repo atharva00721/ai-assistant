@@ -32,7 +32,7 @@ async function getOrCreateUser(userId: string, timezone?: string) {
   // Create new user
   const [newUser] = await db.insert(users).values({
     userId,
-    timezone: timezone || "UTC",
+    timezone: timezone || "Asia/Kolkata",
   }).returning();
 
   return newUser;
@@ -90,7 +90,7 @@ const app = new Elysia()
 
       // Get or create user with timezone
       const user = await getOrCreateUser(userId, timezone);
-      const userTimezone = user?.timezone || "UTC";
+      const userTimezone = user?.timezone || "Asia/Kolkata";
       const todoistToken = user?.todoistToken || null;
 
       // Handle /todoist_token command
@@ -139,7 +139,7 @@ const app = new Elysia()
       if (message.toLowerCase().startsWith("/timezone")) {
         const tzMatch = message.match(/\/timezone\s+(.+)/);
         if (!tzMatch || !tzMatch[1]) {
-          return { reply: `Your current timezone is: ${userTimezone}\n\nTo change it, use: /timezone <timezone>\nExample: /timezone America/New_York\n\nCommon timezones:\n- America/New_York\n- America/Chicago\n- America/Denver\n- America/Los_Angeles\n- Europe/London\n- Europe/Paris\n- Asia/Tokyo\n- Asia/Shanghai\n- Australia/Sydney` };
+          return { reply: `Your current timezone is: ${userTimezone}\n\nTo change it, use: /timezone <timezone>\nExample: /timezone Asia/Kolkata\n\nCommon timezones:\n- Asia/Kolkata (India/Bangalore)\n- America/New_York\n- Europe/London\n- Asia/Tokyo\n- Australia/Sydney` };
         }
 
         const newTimezone = tzMatch[1].trim();
@@ -155,7 +155,7 @@ const app = new Elysia()
           const timeInTz = formatTimeInTimezone(now, newTimezone);
           return { reply: `✅ Timezone updated to ${newTimezone}\nCurrent time: ${timeInTz}` };
         } catch (error) {
-          return { reply: `Invalid timezone: ${newTimezone}\n\nPlease use a valid timezone like:\n- America/New_York\n- America/Los_Angeles\n- Europe/London\n- Asia/Tokyo` };
+          return { reply: `Invalid timezone: ${newTimezone}\n\nPlease use a valid timezone like:\n- Asia/Kolkata\n- America/New_York\n- Europe/London\n- Asia/Tokyo` };
         }
       }
 
@@ -512,7 +512,7 @@ const app = new Elysia()
       return {
         user: {
           userId: user?.userId,
-          timezone: user?.timezone ?? "UTC",
+          timezone: user?.timezone ?? "Asia/Kolkata",
           hasTodoist: !!user?.todoistToken,
         },
       };
@@ -541,7 +541,7 @@ const app = new Elysia()
       }
       await db.update(users).set(updates).where(eq(users.userId, userId));
       const [user] = await db.select().from(users).where(eq(users.userId, userId)).limit(1);
-      return { user: { userId: user?.userId, timezone: user?.timezone ?? "UTC" } };
+      return { user: { userId: user?.userId, timezone: user?.timezone ?? "Asia/Kolkata" } };
     },
     {
       body: t.Object({
