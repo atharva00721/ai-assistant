@@ -1,6 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
 import { detectTodoistIntent, processTodoistCommand } from "./todoist-agent.js";
+import { searchMemories, touchMemories } from "./memory-repo.js";
 
 const apiKey = Bun.env.ANANNAS_API_KEY;
 if (!apiKey) {
@@ -53,6 +54,20 @@ Limits and style:
 - If something is unclear, ask one short clarifying question.
 - Keep replies short and composed. No markdown (no *, _, backticks). No repeated greetings. Avoid sounding like a bot.`;
 
+function buildSystemPrompt(baseSystem: string, memoryContext: string): string {
+  return `${baseSystem}
+
+Long-term context about this user (from prior interactions, notes, and habits):
+${memoryContext}
+
+Use this context when it’s helpful, but do not assume facts that are not stated here or in the current conversation. If you’re unsure, ask a brief clarifying question.`;
+}
+
+function formatMemoryContext(memories: { kind: string; content: string }[]): string {
+  if (memories.length === 0) return "No long-term memories yet.";
+  return memories.map((memory) => `- [${memory.kind}] ${memory.content}`).join("\n");
+}
+
 /** Run main LLM with tool output as context so the main model always replies to the user. */
 async function mainLLMRespondWithContext(
   userId: string,
@@ -64,7 +79,9 @@ async function mainLLMRespondWithContext(
     toolType === "search"
       ? "The user asked for something from the web. Below are the search results. Reply in your own words—like you’re telling a friend what you found. Short and natural. No markdown, no bullet lists unless it really helps."
       : "The user just did something with their task list (Todoist). Below is what actually happened (e.g. tasks added, list of tasks, something completed). Reply like a real person would: a quick confirmation or a natural comment. No markdown.";
-  const system = `${SYSTEM_PROMPT}\n\n${contextInstruction}\n\n---\n${toolContent}`;
+  const memories = await searchMemories({ userId, query: userMessage, topK: 8 });
+  const memoryContext = formatMemoryContext(memories);
+  const system = `${buildSystemPrompt(SYSTEM_PROMPT, memoryContext)}\n\n${contextInstruction}\n\n---\n${toolContent}`;
   let history = conversations.get(userId) || [];
   history.push({ role: "user", content: userMessage });
   const prompt = history
@@ -78,6 +95,9 @@ async function mainLLMRespondWithContext(
   history.push({ role: "assistant", content: text });
   if (history.length > MAX_HISTORY) history = history.slice(-MAX_HISTORY);
   conversations.set(userId, history);
+  if (memories.length > 0) {
+    await touchMemories(memories.map((memory) => memory.id));
+  }
   return text;
 }
 
@@ -586,9 +606,11 @@ export async function askAI(
     .map((msg) => `${msg.role === "user" ? "User" : "Assistant"}: ${msg.content}`)
     .join("\n");
 
+  const memories = await searchMemories({ userId, query: trimmedMessage, topK: 8 });
+  const memoryContext = formatMemoryContext(memories);
   const { text } = await generateText({
     model: textModel,
-    system: SYSTEM_PROMPT,
+    system: buildSystemPrompt(SYSTEM_PROMPT, memoryContext),
     prompt,
   });
 
@@ -599,6 +621,9 @@ export async function askAI(
   }
 
   conversations.set(userId, history);
+  if (memories.length > 0) {
+    await touchMemories(memories.map((memory) => memory.id));
+  }
 
   return { text };
 }
