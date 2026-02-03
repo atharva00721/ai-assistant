@@ -9,7 +9,8 @@
     "bot": "bun run src/bot-polling.ts",
     "db:init": "bun run scripts/init-db.ts",
     "dev": "bun run src/server.ts",
-    "test:reminder": "bun run scripts/test-reminder.ts"
+    "test:reminder": "bun run scripts/test-reminder.ts",
+    "test:search": "bun run scripts/test-search.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

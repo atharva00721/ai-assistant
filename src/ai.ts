@@ -17,6 +17,16 @@ const openai = createOpenAI({
 });
 const textModel = openai.chat("openai-gpt-oss-20b-1-0");
 
+// Perplexity client for web search
+const perplexityApiKey = Bun.env.PERPLEXITY_API_KEY;
+const perplexity = perplexityApiKey
+  ? createOpenAI({
+      baseURL: "https://api.perplexity.ai",
+      apiKey: perplexityApiKey,
+    })
+  : null;
+const searchModel = perplexity?.chat("llama-3.1-sonar-small-128k-online");
+
 interface Message {
   role: "user" | "assistant";
   content: string;
@@ -82,6 +92,51 @@ function detectImageRequest(message: string): boolean {
   return imageKeywords.some((keyword) => lowerMessage.includes(keyword));
 }
 
+function detectSearchIntent(message: string): boolean {
+  const searchKeywords = [
+    "search",
+    "find",
+    "lookup",
+    "look up",
+    "what is",
+    "what are",
+    "who is",
+    "who are",
+    "when",
+    "where",
+    "how",
+    "latest",
+    "recent",
+    "news",
+    "current",
+    "today",
+    "compare",
+    "comparison",
+    "vs",
+    "versus",
+    "difference between",
+    "explain",
+    "research",
+    "information about",
+    "tell me about",
+    "price",
+    "cost",
+    "weather",
+    "forecast",
+  ];
+  const lowerMessage = message.toLowerCase();
+  
+  // Check for search keywords
+  const hasSearchKeyword = searchKeywords.some((keyword) => 
+    lowerMessage.includes(keyword)
+  );
+  
+  // Also check if message ends with a question mark (often informational)
+  const isQuestion = message.trim().endsWith("?");
+  
+  return hasSearchKeyword || isQuestion;
+}
+
 interface ReminderIntent {
   type: "reminder";
   message: string;
@@ -124,6 +179,30 @@ async function detectReminderIntent(
   }
 }
 
+async function searchWeb(query: string): Promise<string> {
+  if (!searchModel) {
+    return "Web search is not available. Please set PERPLEXITY_API_KEY environment variable.";
+  }
+
+  try {
+    const searchPrompt = `You are a helpful research assistant with access to the web. The user has asked: "${query}"
+
+Please search the web for current, accurate information and provide a clear, natural language summary of your findings. Include relevant details, facts, and context. Avoid just listing links - synthesize the information into a cohesive, informative response.
+
+Keep your response concise but thorough, and cite sources when relevant.`;
+
+    const { text } = await generateText({
+      model: searchModel,
+      prompt: searchPrompt,
+    });
+
+    return text;
+  } catch (error) {
+    console.error("Error performing web search:", error);
+    return "Sorry, I encountered an error while searching the web. Please try again.";
+  }
+}
+
 export async function askAI(
   message: string,
   userId: string,
@@ -137,10 +216,29 @@ export async function askAI(
     };
   }
 
-  // Check if this is a reminder request
+  // Check if this is a reminder request (highest priority)
   const reminderIntent = await detectReminderIntent(message, userTimezone);
   if (reminderIntent) {
     return { reminder: reminderIntent };
+  }
+
+  // Check if this is a search/informational query
+  const isSearchQuery = detectSearchIntent(message);
+  if (isSearchQuery && searchModel) {
+    const searchResult = await searchWeb(message);
+    
+    // Add to conversation history for context
+    let history = conversations.get(userId) || [];
+    history.push({ role: "user", content: message });
+    history.push({ role: "assistant", content: searchResult });
+    
+    if (history.length > MAX_HISTORY) {
+      history = history.slice(-MAX_HISTORY);
+    }
+    
+    conversations.set(userId, history);
+    
+    return { text: searchResult };
   }
 
   // Standard text conversation
