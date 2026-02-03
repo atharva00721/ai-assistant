@@ -1,4 +1,4 @@
-CREATE TABLE "reminders" (
+CREATE TABLE IF NOT EXISTS "reminders" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"message" text NOT NULL,
@@ -7,7 +7,7 @@ CREATE TABLE "reminders" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "users" (
+CREATE TABLE IF NOT EXISTS "users" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"timezone" text DEFAULT 'UTC' NOT NULL,
