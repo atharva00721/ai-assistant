@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "bun run src/server.ts",
+    "start": "bun run scripts/start.ts",
+    "start:server": "bun run src/server.ts",
     "scheduler": "bun run src/scheduler.ts",
     "bot": "bun run src/bot-polling.ts",
     "db:init": "bun run scripts/init-db.ts",

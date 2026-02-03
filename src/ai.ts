@@ -26,7 +26,7 @@ const perplexity = perplexityApiKey
       apiKey: perplexityApiKey,
     })
   : null;
-const searchModel = perplexity?.chat("sonar");
+const searchModel = perplexity?.chat("sonar-pro");
 
 interface Message {
   role: "user" | "assistant";
