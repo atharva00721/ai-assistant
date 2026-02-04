@@ -1,60 +1,15 @@
 import { splitRepo, type GithubClient } from "./client.js";
 import { RestGithubClient } from "./rest-client.js";
-import { McpGithubClient } from "./mcp-client.js";
 import { applyPatchToText, applyV4ADiffToText } from "../../shared/utils/apply-patch.js";
 import { createPendingAction, deletePendingAction, getPendingActionById } from "./pending-actions-repo.js";
-import { decryptGithubToken, getUser } from "../users/service.js";
+import { decryptGithubToken, getUser, setGithubRepo } from "../users/service.js";
 import type { GithubIntent } from "../ai/intents/github.js";
 
 const MAX_EDIT_FILES = 5;
 const PENDING_EXPIRES_MINUTES = 30;
 
 function getGithubClient(token: string): GithubClient {
-  const rest = new RestGithubClient(token);
-  if (Bun.env.GITHUB_MCP_ENABLED !== "true") {
-    return rest;
-  }
-  let mcp: GithubClient;
-  try {
-    mcp = new McpGithubClient();
-  } catch (err) {
-    console.warn("MCP not configured, falling back to REST:", err);
-    return rest;
-  }
-
-  const wrap = <T extends (...args: any[]) => Promise<any>>(fn: T, fallback: T): T => {
-    return (async (...args: Parameters<T>) => {
-      try {
-        return await fn(...args);
-      } catch (err) {
-        console.warn("MCP call failed, falling back to REST:", err);
-        return await fallback(...args);
-      }
-    }) as T;
-  };
-
-  return {
-    createIssue: wrap(mcp.createIssue.bind(mcp), rest.createIssue.bind(rest)),
-    commentOnPr: wrap(mcp.commentOnPr.bind(mcp), rest.commentOnPr.bind(rest)),
-    assignReviewers: wrap(mcp.assignReviewers.bind(mcp), rest.assignReviewers.bind(rest)),
-    requestChanges: wrap(mcp.requestChanges.bind(mcp), rest.requestChanges.bind(rest)),
-    approveReview: wrap(mcp.approveReview.bind(mcp), rest.approveReview.bind(rest)),
-    commentReview: wrap(mcp.commentReview.bind(mcp), rest.commentReview.bind(rest)),
-    dismissReview: wrap(mcp.dismissReview.bind(mcp), rest.dismissReview.bind(rest)),
-    getRepo: wrap(mcp.getRepo.bind(mcp), rest.getRepo.bind(rest)),
-    getBranchSha: wrap(mcp.getBranchSha.bind(mcp), rest.getBranchSha.bind(rest)),
-    getPr: wrap(mcp.getPr.bind(mcp), rest.getPr.bind(rest)),
-    getFile: wrap(mcp.getFile.bind(mcp), rest.getFile.bind(rest)),
-    createBranch: wrap(mcp.createBranch.bind(mcp), rest.createBranch.bind(rest)),
-    updateFile: wrap(mcp.updateFile.bind(mcp), rest.updateFile.bind(rest)),
-    createPullRequest: wrap(mcp.createPullRequest.bind(mcp), rest.createPullRequest.bind(rest)),
-    mergePullRequest: wrap(mcp.mergePullRequest.bind(mcp), rest.mergePullRequest.bind(rest)),
-    updatePullRequestBranch: wrap(
-      mcp.updatePullRequestBranch.bind(mcp),
-      rest.updatePullRequestBranch.bind(rest),
-    ),
-    listRepos: wrap(mcp.listRepos.bind(mcp), rest.listRepos.bind(rest)),
-  };
+  return new RestGithubClient(token);
 }
 
 function buildConfirmKeyboard(actionId: number) {
@@ -296,12 +251,24 @@ export async function handleGithubIntent(params: {
 
   const normalizedIntentRepo = normalizeRepoName(intent.repo);
   const normalizedUserRepo = normalizeRepoName(user?.githubRepo);
-  const repo = normalizedIntentRepo || normalizedUserRepo;
+
+  let repo = normalizedUserRepo;
+
+  // If the user explicitly mentioned a repo in this request, prefer it
+  if (normalizedIntentRepo) {
+    repo = normalizedIntentRepo;
+    // If it's different from the saved default, automatically switch the default repo
+    if (!normalizedUserRepo || normalizedUserRepo !== normalizedIntentRepo) {
+      try {
+        await setGithubRepo(user.userId, normalizedIntentRepo);
+      } catch (err) {
+        console.error("Failed to update default GitHub repo:", err);
+      }
+    }
+  }
+
   if (!repo) {
     return { reply: "Please set a default repo with /github repo owner/name" };
-  }
-  if (normalizedUserRepo && normalizedIntentRepo && normalizedIntentRepo !== normalizedUserRepo) {
-    return { reply: `This bot is limited to a single repo in v1. Use /github repo ${intent.repo} to switch.` };
   }
   const { owner, repo: repoName } = splitRepo(repo);
   const expiresAt = new Date(Date.now() + PENDING_EXPIRES_MINUTES * 60 * 1000);

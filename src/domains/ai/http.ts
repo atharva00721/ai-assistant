@@ -9,6 +9,7 @@ import { getOrCreateUser, setTodoistToken, updateTimezone, validateTimezone, get
 import { formatTimeInTimezone } from "../../shared/utils/timezone.js";
 import { handleGithubIntent } from "../github/service.js";
 import { fetchGithubUsername } from "../github/auth.js";
+import { splitRepo } from "../github/client.js";
 
 export function registerAiRoutes(app: Elysia) {
   return app.post(
@@ -104,12 +105,39 @@ export function registerAiRoutes(app: Elysia) {
         }
 
         if (sub === "repo") {
-          const repo = parts[2];
-          if (!repo) {
+          const rawRepo = parts[2];
+          if (!rawRepo) {
             return { reply: "Usage: /github repo owner/name" };
           }
-          await setGithubRepo(userId, repo);
-          return { reply: `✅ Default repo set to ${repo}` };
+
+          try {
+            let owner: string;
+            let repoName: string;
+
+            if (rawRepo.includes("/")) {
+              // owner/name or full GitHub URL
+              const parsed = splitRepo(rawRepo);
+              owner = parsed.owner;
+              repoName = parsed.repo;
+            } else if (user?.githubUsername) {
+              // Infer owner from connected GitHub username
+              owner = user.githubUsername;
+              repoName = rawRepo.trim();
+            } else {
+              return {
+                reply:
+                  "Repo must be in owner/name format (e.g., /github repo owner/name). " +
+                  "You can also connect GitHub first so I can infer the owner.",
+              };
+            }
+
+            const normalized = `${owner.toLowerCase()}/${repoName.toLowerCase()}`;
+            await setGithubRepo(userId, normalized);
+            return { reply: `✅ Default repo set to ${normalized}` };
+          } catch (err) {
+            console.error("GitHub repo parse failed:", err);
+            return { reply: "Repo must be in owner/name format, e.g., /github repo owner/name" };
+          }
         }
 
         if (sub === "user") {

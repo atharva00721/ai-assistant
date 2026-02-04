@@ -13,7 +13,7 @@ import { detectExplicitWebSearch } from "./intents/search.js";
 import { detectReminderIntent } from "./intents/reminder.js";
 import { detectJobDigestIntent } from "./intents/job-digest.js";
 import { detectGithubIntent, type GithubIntent } from "./intents/github.js";
-import { classifyIntent } from "./intents/classify.js";
+import { classifyIntentDetailed } from "./intents/classify.js";
 import {
   getMorningJobDigestState,
   addHandleToMorningJobDigest,
@@ -222,10 +222,16 @@ export async function askAI(
     return { text };
   }
 
-  const intent = await classifyIntent(trimmedMessage, {
+  const routing = await classifyIntentDetailed(trimmedMessage, {
     hasTodoist: !!todoistToken,
     hasSearch: !!searchModel,
   });
+  if (routing.needsClarification && routing.clarificationQuestion) {
+    return {
+      text: routing.clarificationQuestion,
+    };
+  }
+  const intent = routing.intent;
 
   switch (intent) {
     case "note": {

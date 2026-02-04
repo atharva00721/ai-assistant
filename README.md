@@ -49,7 +49,6 @@ GITHUB_OAUTH_CLIENT_SECRET=your_github_client_secret
 GITHUB_OAUTH_REDIRECT_URI=http://localhost:3000/github/oauth/callback
 OPENAI_CODEX_API_KEY=your_openai_api_key
 OPENAI_CODEX_MODEL=gpt-5.2-codex
-GITHUB_MCP_ENABLED=false
 ```
 
 ## Installation
