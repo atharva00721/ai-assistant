@@ -95,7 +95,8 @@ export async function upsertMemoryRecord(
   };
 
   const namespace = getPineconeNamespace();
-  await pineconeFetch(`/records/namespaces/${namespace}/upsert`, payload);
+  const namespacePath = namespace ? `/namespaces/${namespace}` : '';
+  await pineconeFetch(`/records${namespacePath}/upsert`, payload);
 }
 
 export async function queryMemories(params: {
@@ -114,8 +115,9 @@ export async function queryMemories(params: {
 
   const textField = getPineconeTextField();
   const namespace = getPineconeNamespace();
+  const namespacePath = namespace ? `/namespaces/${namespace}` : '';
   const response = await pineconeFetch<{ matches?: PineconeQueryMatch[] }>(
-    `/records/namespaces/${namespace}/query`,
+    `/records${namespacePath}/query`,
     {
       topK: params.topK,
       includeMetadata: false,

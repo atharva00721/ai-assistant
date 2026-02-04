@@ -13,6 +13,7 @@ export type GlobalIntent =
   | "focus_timer"
   | "reminder"
   | "todoist"
+  | "gmail"
   | "github"
   | "job_digest"
   | "chat";
@@ -45,8 +46,10 @@ function getGlobalClassifyPrompt(options: {
     "job_digest - Morning JOB LIST (Twitter accounts to text for jobs): add/remove handles, show list, set time, enable/disable daily digest. Phrases: \"add @x to my job list\", \"morning job list\", \"send my job list at 9am\", \"who to text for jobs\", \"twitter accounts for job\".",
   );
 
-  tools.push(
-    "github - GitHub actions: create issues, comment on PRs, assign reviewers, request changes, edit code and open PRs. Phrases: \"create an issue\", \"comment on PR\", \"assign reviewers\", \"request changes\", \"edit code in repo\".",
+  tools.push(    "gmail - Read, search, send emails. Phrases: \"show my emails\", \"search emails\", \"send email to\", \"what emails did I get\", \"summarize emails\", \"inbox\"."
+  );
+
+  tools.push(    "github - GitHub actions: create issues, comment on PRs, assign reviewers, request changes, edit code and open PRs. Phrases: \"create an issue\", \"comment on PR\", \"assign reviewers\", \"request changes\", \"edit code in repo\".",
   );
 
   tools.push(
@@ -68,9 +71,11 @@ Rules:
 - "Weather in X" / "will it rain" → weather.
 - "Search for X" / "look up X" / "latest on X" → search.
 - Add/show/set morning job list, Twitter accounts to text for jobs → job_digest.
+- Create issues, comment on PRs, assign reviewers, request changes, edit code → github.
+- Read/search/send emails, check inbox, summarize emails → gmail.
 - Otherwise or unclear → chat.
 
-Reply with ONLY one word: note, habit, weather, search, focus_timer, reminder, ${hasTodoist ? "todoist, " : ""}github, job_digest, or chat. No explanation.
+Reply with ONLY one word: note, habit, weather, search, focus_timer, reminder, ${hasTodoist ? "todoist, " : ""}gmail, github, job_digest, or chat. No explanation.
 
 User message: `;
 }
@@ -98,6 +103,8 @@ export async function classifyIntent(
     "focus_timer",
     "reminder",
     "todoist",
+    "gmail",
+    "github",
     "github",
     "job_digest",
     "chat",

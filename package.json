@@ -11,6 +11,7 @@
     "db:init": "bun run scripts/init-db.ts",
     "db:migrate": "bun run scripts/migrate.ts",
     "db:add-users-table": "bun run scripts/add-users-table.ts",
+    "db:add-gmail-table": "bun run scripts/add-gmail-table.ts",
     "dev": "bun run src/server.ts",
     "test": "bun test",
     "test:reminder": "bun run scripts/test-reminder.ts",

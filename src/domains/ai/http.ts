@@ -8,6 +8,7 @@ import { getOrCreateUser, setTodoistToken, updateTimezone, validateTimezone, get
 import { formatTimeInTimezone } from "../../shared/utils/timezone.js";
 import { handleGithubIntent } from "../github/service.js";
 import { fetchGithubUsername } from "../github/auth.js";
+import { handleGmailIntent } from "../gmail/agent.js";
 
 export function registerAiRoutes(app: Elysia) {
   return app.post(
@@ -145,6 +146,55 @@ export function registerAiRoutes(app: Elysia) {
         }
 
         return { reply: "GitHub commands: /github connect | /github token <PAT> | /github repo owner/name | /github status | /github repos | /github user" };
+      }
+
+      // Handle Gmail commands and natural language (bypass AI intent detection)
+      if (message.toLowerCase().startsWith("/gmail") || 
+          message.toLowerCase().includes("email") ||
+          message.toLowerCase().includes("mail") ||
+          message.toLowerCase().includes("inbox") ||
+          message.toLowerCase().includes("gmail")) {
+        try {
+          console.log("Gmail request detected:", message);
+          
+          // Import Gmail service directly
+          const { executeGmailAction } = await import("../gmail/service.js");
+          
+          // Simple rule-based intent detection (no AI)
+          let intent = {
+            isGmailIntent: true,
+            action: 'list' as const,
+            query: null,
+            recipient: null,
+            subject: null,
+            body: null,
+            limit: 10
+          };
+          
+          // Simple keyword matching
+          if (message.toLowerCase().includes("send")) {
+            intent.action = 'send';
+            // Extract email from message (simple regex)
+            const emailMatch = message.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+            if (emailMatch) {
+              intent.recipient = emailMatch[0];
+              intent.subject = "Message from AI Assistant";
+              intent.body = message.replace(emailMatch[0], "").replace("send", "").replace("mail", "").replace("email", "").trim();
+            }
+          } else if (message.toLowerCase().includes("last")) {
+            intent.limit = 1;
+          }
+          
+          console.log("Executing Gmail action with intent:", intent);
+          const result = await executeGmailAction(userId, intent);
+          console.log("Gmail result:", result);
+          
+          return { reply: result.message || "Gmail action completed" };
+          
+        } catch (error) {
+          console.error("Gmail command error:", error);
+          return { reply: `Gmail error: ${error.message}` };
+        }
       }
 
       if (
