@@ -17,6 +17,8 @@ A Telegram AI assistant with reminder and scheduled task functionality.
 - 💾 PostgreSQL database for persistent storage
 - ⚡ Efficient scheduler for reminder delivery
 - 🧩 GitHub actions: create issues, comment on PRs, assign reviewers, request changes
+- ✅ PR reviews: approve, review comments, dismiss reviews (admin)
+- 🔀 Repo actions: create branch, open PR, merge PR, update PR branch
 - 🛠️ Codex-powered code edits with confirm-before-write
 
 ## Stack
@@ -178,6 +180,8 @@ Send any other message to have a normal conversation with the AI assistant.
 - `/github token <PAT>` - Save a GitHub personal access token
 - `/github repo owner/name` - Set default repo
 - `/github status` - Show GitHub connection status
+- `/github repos` - List repositories
+- `/github user` - Show GitHub user and list repositories
 
 ## Quick Commands
 
@@ -188,6 +192,8 @@ Send any other message to have a normal conversation with the AI assistant.
 - `/github token <PAT>` - Save a GitHub token
 - `/github repo owner/name` - Set default repo
 - `/github status` - Show GitHub status
+- `/github repos` - List repositories
+- `/github user` - Show GitHub user and list repositories
 - Normal text - Chat with AI or create reminders
 
 ## Project Structure

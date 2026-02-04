@@ -99,6 +99,58 @@ export class RestGithubClient implements GithubClient {
     return { url: data.html_url };
   }
 
+  async approveReview(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    body?: string | undefined;
+  }): Promise<{ url: string }> {
+    const data = await this.request<{ html_url: string }>(
+      `/repos/${params.owner}/${params.repo}/pulls/${params.number}/reviews`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body: params.body, event: "APPROVE" }),
+      },
+    );
+    return { url: data.html_url };
+  }
+
+  async commentReview(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    body: string;
+  }): Promise<{ url: string }> {
+    const data = await this.request<{ html_url: string }>(
+      `/repos/${params.owner}/${params.repo}/pulls/${params.number}/reviews`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ body: params.body, event: "COMMENT" }),
+      },
+    );
+    return { url: data.html_url };
+  }
+
+  async dismissReview(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    reviewId: number;
+    message: string;
+  }): Promise<{ url: string }> {
+    const data = await this.request<{ html_url: string }>(
+      `/repos/${params.owner}/${params.repo}/pulls/${params.number}/reviews/${params.reviewId}/dismissals`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: params.message }),
+      },
+    );
+    return { url: data.html_url };
+  }
+
   async getRepo(params: { owner: string; repo: string }): Promise<{ defaultBranch: string }> {
     const data = await this.request<{ default_branch: string }>(
       `/repos/${params.owner}/${params.repo}`,
@@ -195,5 +247,46 @@ export class RestGithubClient implements GithubClient {
       },
     );
     return { url: data.html_url };
+  }
+
+  async mergePullRequest(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    mergeMethod: "merge" | "squash" | "rebase";
+  }): Promise<{ url: string }> {
+    const data = await this.request<{ html_url: string }>(
+      `/repos/${params.owner}/${params.repo}/pulls/${params.number}/merge`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ merge_method: params.mergeMethod }),
+      },
+    );
+    return { url: data.html_url };
+  }
+
+  async updatePullRequestBranch(params: {
+    owner: string;
+    repo: string;
+    number: number;
+  }): Promise<{ message: string }> {
+    const data = await this.request<{ message: string }>(
+      `/repos/${params.owner}/${params.repo}/pulls/${params.number}/update-branch`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+    return { message: data.message };
+  }
+
+  async listRepos(params: { perPage?: number }): Promise<Array<{ fullName: string; private: boolean }>> {
+    const perPage = params.perPage ?? 50;
+    const data = await this.request<Array<{ full_name: string; private: boolean }>>(
+      `/user/repos?per_page=${perPage}&sort=updated`,
+    );
+    return data.map((repo) => ({ fullName: repo.full_name, private: repo.private }));
   }
 }

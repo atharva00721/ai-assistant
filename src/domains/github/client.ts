@@ -30,6 +30,28 @@ export interface GithubClient {
     body: string;
   }): Promise<{ url: string }>;
 
+  approveReview(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    body?: string;
+  }): Promise<{ url: string }>;
+
+  commentReview(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    body: string;
+  }): Promise<{ url: string }>;
+
+  dismissReview(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    reviewId: number;
+    message: string;
+  }): Promise<{ url: string }>;
+
   getRepo(params: { owner: string; repo: string }): Promise<{ defaultBranch: string }>;
 
   getBranchSha(params: { owner: string; repo: string; branch: string }): Promise<string>;
@@ -72,6 +94,21 @@ export interface GithubClient {
     head: string;
     base: string;
   }): Promise<{ url: string }>;
+
+  mergePullRequest(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    mergeMethod: "merge" | "squash" | "rebase";
+  }): Promise<{ url: string }>;
+
+  updatePullRequestBranch(params: {
+    owner: string;
+    repo: string;
+    number: number;
+  }): Promise<{ message: string }>;
+
+  listRepos(params: { perPage?: number }): Promise<Array<{ fullName: string; private: boolean }>>;
 }
 
 export function splitRepo(repo: string): { owner: string; repo: string } {

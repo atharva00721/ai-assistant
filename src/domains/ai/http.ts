@@ -111,6 +111,32 @@ export function registerAiRoutes(app: Elysia) {
           return { reply: `✅ Default repo set to ${repo}` };
         }
 
+        if (sub === "user") {
+          if (!user?.githubToken) {
+            return { reply: "GitHub not connected. Use /github connect or /github token <PAT>." };
+          }
+          try {
+            const out = await handleGithubIntent({ user, intent: { action: "list_repos" } });
+            return { reply: `GitHub user: ${user?.githubUsername || "(unknown)"}\nRepo: ${user?.githubRepo || "(not set)"}\n\n${out.reply}` };
+          } catch (err) {
+            console.error("GitHub user list error:", err);
+            return { reply: "Failed to list repos. Check token permissions." };
+          }
+        }
+
+        if (sub === "repos") {
+          if (!user?.githubToken) {
+            return { reply: "GitHub not connected. Use /github connect or /github token <PAT>." };
+          }
+          try {
+            const out = await handleGithubIntent({ user, intent: { action: "list_repos" } });
+            return { reply: out.reply };
+          } catch (err) {
+            console.error("GitHub repos list error:", err);
+            return { reply: "Failed to list repos. Check token permissions." };
+          }
+        }
+
         if (sub === "status") {
           const status = user?.githubToken ? "connected" : "not connected";
           return {
@@ -118,7 +144,7 @@ export function registerAiRoutes(app: Elysia) {
           };
         }
 
-        return { reply: "GitHub commands: /github connect | /github token <PAT> | /github repo owner/name | /github status" };
+        return { reply: "GitHub commands: /github connect | /github token <PAT> | /github repo owner/name | /github status | /github repos | /github user" };
       }
 
       if (

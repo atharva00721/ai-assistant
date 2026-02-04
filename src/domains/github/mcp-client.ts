@@ -25,6 +25,15 @@ export class McpGithubClient implements GithubClient {
   async requestChanges(): Promise<{ url: string }> {
     return this.notConfigured();
   }
+  async approveReview(): Promise<{ url: string }> {
+    return this.notConfigured();
+  }
+  async commentReview(): Promise<{ url: string }> {
+    return this.notConfigured();
+  }
+  async dismissReview(): Promise<{ url: string }> {
+    return this.notConfigured();
+  }
   async getRepo(): Promise<{ defaultBranch: string }> {
     return this.notConfigured();
   }
@@ -44,6 +53,15 @@ export class McpGithubClient implements GithubClient {
     return this.notConfigured();
   }
   async createPullRequest(): Promise<{ url: string }> {
+    return this.notConfigured();
+  }
+  async mergePullRequest(): Promise<{ url: string }> {
+    return this.notConfigured();
+  }
+  async updatePullRequestBranch(): Promise<{ message: string }> {
+    return this.notConfigured();
+  }
+  async listRepos(): Promise<Array<{ fullName: string; private: boolean }>> {
     return this.notConfigured();
   }
 }

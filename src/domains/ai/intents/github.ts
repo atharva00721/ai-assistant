@@ -7,10 +7,28 @@ export type GithubIntent = {
     | "comment_pr"
     | "assign_reviewers"
     | "request_changes"
-    | "edit_code";
+    | "approve_pr"
+    | "review_pr_comment"
+    | "dismiss_review"
+    | "edit_code"
+    | "list_repos"
+    | "create_branch"
+    | "open_pr"
+    | "merge_pr"
+    | "update_pr_branch";
   repo?: string;
   issue?: { title: string; body?: string; labels?: string[] };
-  pr?: { number: number; comment?: string; reviewers?: string[] };
+  pr?: {
+    number: number;
+    comment?: string;
+    reviewers?: string[];
+    mergeMethod?: "merge" | "squash" | "rebase";
+    reviewId?: number;
+    baseBranch?: string;
+    headBranch?: string;
+    title?: string;
+    body?: string;
+  };
   codeEdit?: {
     branchName?: string;
     commitMessage: string;
@@ -36,7 +54,15 @@ Supported actions:
 - comment_pr: comment on a pull request
 - assign_reviewers: request reviewers on a PR
 - request_changes: request changes (review) on a PR
+- approve_pr: approve a PR review
+- review_pr_comment: submit a general review comment on a PR
+- dismiss_review: dismiss a review (requires reviewId)
 - edit_code: change code and commit or open a PR
+- list_repos: list repositories the user can access
+- create_branch: create a branch from a base branch
+- open_pr: open PR from branch
+- merge_pr: merge a PR
+- update_pr_branch: update (rebase) a PR branch with base
 
 If action is create_issue:
 {"action":"create_issue","repo":"owner/name?","issue":{"title":"...","body":"...","labels":["..."]}}
@@ -50,8 +76,32 @@ If action is assign_reviewers:
 If action is request_changes:
 {"action":"request_changes","repo":"owner/name?","pr":{"number":123,"comment":"..."}}
 
+If action is approve_pr:
+{"action":"approve_pr","repo":"owner/name?","pr":{"number":123,"comment":"optional message"}}
+
+If action is review_pr_comment:
+{"action":"review_pr_comment","repo":"owner/name?","pr":{"number":123,"comment":"..."}}
+
+If action is dismiss_review:
+{"action":"dismiss_review","repo":"owner/name?","pr":{"number":123,"reviewId":456,"comment":"reason"}}
+
 If action is edit_code:
 {"action":"edit_code","repo":"owner/name?","codeEdit":{"commitMessage":"...","branchName":"optional","files":["path"],"instructions":"...","directCommit":false}}
+
+If action is list_repos:
+{"action":"list_repos"}
+
+If action is create_branch:
+{"action":"create_branch","repo":"owner/name?","pr":{"baseBranch":"main","headBranch":"feature/name"}}
+
+If action is open_pr:
+{"action":"open_pr","repo":"owner/name?","pr":{"title":"...","body":"...","baseBranch":"main","headBranch":"feature/name"}}
+
+If action is merge_pr:
+{"action":"merge_pr","repo":"owner/name?","pr":{"number":123,"mergeMethod":"squash"}}
+
+If action is update_pr_branch:
+{"action":"update_pr_branch","repo":"owner/name?","pr":{"number":123}}
 
 Notes:
 - Strip @ from reviewer usernames.

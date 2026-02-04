@@ -1,7 +1,7 @@
 import { splitRepo, type GithubClient } from "./client.js";
 import { RestGithubClient } from "./rest-client.js";
 import { McpGithubClient } from "./mcp-client.js";
-import { applyV4ADiffToText } from "../../shared/utils/apply-patch.js";
+import { applyPatchToText, applyV4ADiffToText } from "../../shared/utils/apply-patch.js";
 import { createPendingAction, deletePendingAction, getPendingActionById } from "./pending-actions-repo.js";
 import { decryptGithubToken, getUser } from "../users/service.js";
 import type { GithubIntent } from "../ai/intents/github.js";
@@ -14,7 +14,7 @@ function getGithubClient(token: string): GithubClient {
   if (Bun.env.GITHUB_MCP_ENABLED !== "true") {
     return rest;
   }
-  let mcp: GithubClient | null = null;
+  let mcp: GithubClient;
   try {
     mcp = new McpGithubClient();
   } catch (err) {
@@ -38,6 +38,9 @@ function getGithubClient(token: string): GithubClient {
     commentOnPr: wrap(mcp.commentOnPr.bind(mcp), rest.commentOnPr.bind(rest)),
     assignReviewers: wrap(mcp.assignReviewers.bind(mcp), rest.assignReviewers.bind(rest)),
     requestChanges: wrap(mcp.requestChanges.bind(mcp), rest.requestChanges.bind(rest)),
+    approveReview: wrap(mcp.approveReview.bind(mcp), rest.approveReview.bind(rest)),
+    commentReview: wrap(mcp.commentReview.bind(mcp), rest.commentReview.bind(rest)),
+    dismissReview: wrap(mcp.dismissReview.bind(mcp), rest.dismissReview.bind(rest)),
     getRepo: wrap(mcp.getRepo.bind(mcp), rest.getRepo.bind(rest)),
     getBranchSha: wrap(mcp.getBranchSha.bind(mcp), rest.getBranchSha.bind(rest)),
     getPr: wrap(mcp.getPr.bind(mcp), rest.getPr.bind(rest)),
@@ -45,6 +48,12 @@ function getGithubClient(token: string): GithubClient {
     createBranch: wrap(mcp.createBranch.bind(mcp), rest.createBranch.bind(rest)),
     updateFile: wrap(mcp.updateFile.bind(mcp), rest.updateFile.bind(rest)),
     createPullRequest: wrap(mcp.createPullRequest.bind(mcp), rest.createPullRequest.bind(rest)),
+    mergePullRequest: wrap(mcp.mergePullRequest.bind(mcp), rest.mergePullRequest.bind(rest)),
+    updatePullRequestBranch: wrap(
+      mcp.updatePullRequestBranch.bind(mcp),
+      rest.updatePullRequestBranch.bind(rest),
+    ),
+    listRepos: wrap(mcp.listRepos.bind(mcp), rest.listRepos.bind(rest)),
   };
 }
 
@@ -81,7 +90,7 @@ async function runCodexApplyPatch(params: {
     diff: string;
   }>
 > {
-  const baseUrl = Bun.env.OPENAI_CODEX_BASE_URL || "https://api.openai.com/v1";
+  const baseUrl = Bun.env.OPENAI_CODEX_BASE_URL || "https://ai-gateway.vercel.sh/v1";
   const apiKey = Bun.env.OPENAI_CODEX_API_KEY || Bun.env.OPENAI_API_KEY || Bun.env.ANANNAS_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_CODEX_API_KEY (or OPENAI_API_KEY) is required for code edits");
@@ -92,53 +101,166 @@ async function runCodexApplyPatch(params: {
     .map((f) => `File: ${f.path}\n---\n${f.content}`)
     .join("\n\n");
 
-  const input = `You are a coding agent. Produce apply_patch tool calls only.\n\n` +
+
+    const applyPatchToolInput = `You are a coding agent. Produce apply_patch tool calls only.\n\n` +
     `Update existing files only. Do not create or delete files.\n` +
     `Files:\n${filesBlock}\n\n` +
     `Instructions:\n${params.instructions}`;
 
-  const res = await fetch(`${baseUrl}/responses`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "authorization": `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      input,
-      tools: [{ type: "apply_patch" }],
-    }),
-  });
+  async function callApplyPatchTool(): Promise<Array<{ path: string; diff: string }>> {
+    const res = await fetch(`${baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        input: applyPatchToolInput,
+        tools: [{ type: "apply_patch" }],
+      }),
+    });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`OpenAI Responses API ${res.status}: ${text}`);
-  }
-
-  const data = await res.json();
-  const output = Array.isArray(data.output)
-    ? data.output
-    : Array.isArray(data.response?.output)
-      ? data.response.output
-      : [];
-  const calls = output.filter((item: any) => item?.type === "apply_patch_call");
-  if (calls.length === 0) {
-    throw new Error("No apply_patch_call operations returned");
-  }
-
-  const diffs: Array<{ path: string; diff: string }> = [];
-  for (const call of calls) {
-    const op = call?.operation;
-    if (!op || op.type !== "update_file") {
-      throw new Error("Only update_file operations are supported in v1");
+    if (!res.ok) {
+      const text = await res.text();
+      throw Object.assign(new Error(`OpenAI Responses API ${res.status}: ${text}`), {
+        status: res.status,
+        bodyText: text,
+      });
     }
-    if (!op.path || !op.diff) {
-      throw new Error("apply_patch_call missing path or diff");
+
+    const data: any = await res.json();
+    const output = Array.isArray(data.output)
+      ? data.output
+      : Array.isArray(data.response?.output)
+        ? data.response.output
+        : [];
+    const calls = output.filter((item: any) => item?.type === "apply_patch_call");
+    if (calls.length === 0) {
+      throw new Error("No apply_patch_call operations returned");
     }
-    diffs.push({ path: op.path, diff: op.diff });
+
+    const diffs: Array<{ path: string; diff: string }> = [];
+    for (const call of calls) {
+      const op = call?.operation;
+      if (!op || op.type !== "update_file") {
+        throw new Error("Only update_file operations are supported in v1");
+      }
+      if (!op.path || !op.diff) {
+        throw new Error("apply_patch_call missing path or diff");
+      }
+      diffs.push({ path: op.path, diff: op.diff });
+    }
+    return diffs;
   }
 
-  return diffs;
+  async function callFunctionToolFallback(): Promise<Array<{ path: string; diff: string }>> {
+    // Some OpenAI-compatible gateways (like OpenAI Gateway) don't implement native `apply_patch`,
+    // but they do support standard function calling. Ask for the same data via a function tool.
+    const input =
+      `You are a coding agent.\n` +
+      `Update existing files only. Do not create or delete files.\n` +
+      `Call the apply_patch tool exactly once, with a NON-EMPTY patches array.\n\n` +
+      `The diff MUST be a V4A diff compatible with applyV4ADiffToText:\n` +
+      `- Must contain at least one hunk starting with @@\n` +
+      `- Hunk lines must begin with one of: space, +, -\n` +
+      `- Include enough exact context lines (prefixed with space) so the diff applies cleanly\n\n` +
+      `Files:\n${filesBlock}\n\n` +
+      `Instructions:\n${params.instructions}`;
+
+    const res = await fetch(`${baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        input,
+        temperature: 0,
+        tools: [
+          {
+            type: "function",
+            name: "apply_patch",
+            description: "Return patches for existing files",
+            parameters: {
+              type: "object",
+              properties: {
+                patches: {
+                  type: "array",
+                  minItems: 1,
+                  items: {
+                    type: "object",
+                    properties: {
+                      path: { type: "string" },
+                      diff: { type: "string" },
+                    },
+                    required: ["path", "diff"],
+                  },
+                },
+              },
+              required: ["patches"],
+            },
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`OpenAI Responses API ${res.status}: ${text}`);
+    }
+
+    const data: any = await res.json();
+    const output = Array.isArray(data.output)
+      ? data.output
+      : Array.isArray(data.response?.output)
+        ? data.response.output
+        : [];
+
+    const fc = output.find((item: any) => item?.type === "function_call" && item?.name === "apply_patch");
+    const argsText = fc?.arguments;
+    if (typeof argsText !== "string") {
+      throw new Error("Codex function fallback returned no apply_patch function_call arguments");
+    }
+    let args: any;
+    try {
+      args = JSON.parse(argsText);
+    } catch {
+      throw new Error(`Codex function fallback returned invalid JSON arguments: ${argsText.slice(0, 500)}`);
+    }
+    const patches = args?.patches;
+    if (!Array.isArray(patches) || patches.length === 0) {
+      throw new Error("Codex function fallback returned empty patches");
+    }
+    for (const p of patches) {
+      if (!p || typeof p.path !== "string" || typeof p.diff !== "string") {
+        throw new Error("Codex function fallback patches must have { path: string, diff: string }");
+      }
+      if (!p.diff.trim()) {
+        throw new Error(`Codex function fallback returned empty diff for ${p.path}`);
+      }
+    }
+    return patches as Array<{ path: string; diff: string }>;
+  }
+
+  try {
+    return await callApplyPatchTool();
+  } catch (err: any) {
+    const msg = String(err?.message || "");
+    const bodyText = String(err?.bodyText || "");
+    // Observed on some OpenAI-compatible gateways:
+    // "tools.0.type: Invalid input: expected \"function\""
+    const functionToolError =
+      msg.includes('expected "function"')
+      || msg.includes("expected \\\"function\\\"")
+      || bodyText.includes('expected "function"')
+      || bodyText.includes("expected \\\"function\\\"");
+    if (err?.status === 400 && functionToolError) {
+      return await callFunctionToolFallback();
+    }
+    throw err;
+  }
 }
 
 export async function handleGithubIntent(params: {
@@ -173,6 +295,64 @@ export async function handleGithubIntent(params: {
     return { reply, replyMarkup: buildConfirmKeyboard(pending!.id) };
   }
 
+  if (intent.action === "list_repos") {
+    const repos = await client.listRepos({ perPage: 30 });
+    if (repos.length === 0) {
+      return { reply: "No repos found for your account." };
+    }
+    const lines = repos.map((r, i) => `${i + 1}. ${r.fullName}${r.private ? " (private)" : ""}`);
+    return { reply: `📦 Your repos:\n\n${lines.join("\n")}\n\nSet default with: /github repo owner/name` };
+  }
+
+  if (intent.action === "create_branch") {
+    const headBranch = intent.pr?.headBranch?.trim();
+    if (!headBranch) {
+      return { reply: "Please specify a branch name to create (e.g., feature/my-branch)." };
+    }
+    const baseBranch =
+      intent.pr?.baseBranch?.trim() ||
+      (await client.getRepo({ owner, repo: repoName })).defaultBranch;
+    const payload = { action: "create_branch", owner, repo: repoName, headBranch, baseBranch };
+    const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
+    if (!pending) return { reply: "Failed to create pending action." };
+    const reply = `🌿 Create branch\nBase: ${baseBranch}\nNew: ${headBranch}`;
+    return { reply, replyMarkup: buildConfirmKeyboard(pending.id) };
+  }
+
+  if (intent.action === "open_pr") {
+    const headBranch = intent.pr?.headBranch?.trim();
+    const title = intent.pr?.title?.trim();
+    if (!headBranch || !title) {
+      return { reply: "Please specify head branch and PR title." };
+    }
+    const baseBranch =
+      intent.pr?.baseBranch?.trim() ||
+      (await client.getRepo({ owner, repo: repoName })).defaultBranch;
+    const body = intent.pr?.body?.trim() || "";
+    const payload = { action: "open_pr", owner, repo: repoName, headBranch, baseBranch, title, body };
+    const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
+    if (!pending) return { reply: "Failed to create pending action." };
+    const reply = `🔀 Open PR\nTitle: ${title}\nBase: ${baseBranch}\nHead: ${headBranch}\nBody: ${body || "(empty)"}`;
+    return { reply, replyMarkup: buildConfirmKeyboard(pending.id) };
+  }
+
+  if (intent.action === "merge_pr" && intent.pr?.number) {
+    const mergeMethod = intent.pr.mergeMethod || "squash";
+    const payload = { action: "merge_pr", owner, repo: repoName, pr: { number: intent.pr.number, mergeMethod } };
+    const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
+    if (!pending) return { reply: "Failed to create pending action." };
+    const reply = `✅ Merge PR #${intent.pr.number} (${mergeMethod})`;
+    return { reply, replyMarkup: buildConfirmKeyboard(pending.id) };
+  }
+
+  if (intent.action === "update_pr_branch" && intent.pr?.number) {
+    const payload = { action: "update_pr_branch", owner, repo: repoName, pr: { number: intent.pr.number } };
+    const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
+    if (!pending) return { reply: "Failed to create pending action." };
+    const reply = `🔁 Update PR branch for #${intent.pr.number} (rebase with base)`;
+    return { reply, replyMarkup: buildConfirmKeyboard(pending.id) };
+  }
+
   if (intent.action === "comment_pr" && intent.pr?.number && intent.pr?.comment) {
     const payload = { action: "comment_pr", owner, repo: repoName, pr: intent.pr };
     const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
@@ -200,6 +380,36 @@ export async function handleGithubIntent(params: {
     if (!pending) return { reply: "Failed to create pending action." };
     const reply = `🛑 Request changes on PR #${intent.pr.number}:\n${comment}`;
     return { reply, replyMarkup: buildConfirmKeyboard(pending!.id) };
+  }
+
+  if (intent.action === "approve_pr" && intent.pr?.number) {
+    const comment = intent.pr.comment || "";
+    const payload = { action: "approve_pr", owner, repo: repoName, pr: { number: intent.pr.number, comment } };
+    const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
+    if (!pending) return { reply: "Failed to create pending action." };
+    const reply = `✅ Approve PR #${intent.pr.number}${comment ? ` with comment:\n${comment}` : ""}`;
+    return { reply, replyMarkup: buildConfirmKeyboard(pending.id) };
+  }
+
+  if (intent.action === "review_pr_comment" && intent.pr?.number && intent.pr?.comment) {
+    const payload = { action: "review_pr_comment", owner, repo: repoName, pr: { number: intent.pr.number, comment: intent.pr.comment } };
+    const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
+    if (!pending) return { reply: "Failed to create pending action." };
+    const reply = `📝 Review comment on PR #${intent.pr.number}:\n${intent.pr.comment}`;
+    return { reply, replyMarkup: buildConfirmKeyboard(pending.id) };
+  }
+
+  if (intent.action === "dismiss_review" && intent.pr?.number) {
+    const reviewId = intent.pr.reviewId;
+    const comment = intent.pr.comment || "Dismissed review.";
+    if (!reviewId) {
+      return { reply: "Please provide the review ID to dismiss (e.g., review 1234)." };
+    }
+    const payload = { action: "dismiss_review", owner, repo: repoName, pr: { number: intent.pr.number, reviewId, comment } };
+    const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
+    if (!pending) return { reply: "Failed to create pending action." };
+    const reply = `🧹 Dismiss review ${reviewId} on PR #${intent.pr.number}:\n${comment}`;
+    return { reply, replyMarkup: buildConfirmKeyboard(pending.id) };
   }
 
   if (intent.action === "edit_code" && intent.codeEdit) {
@@ -237,7 +447,11 @@ export async function handleGithubIntent(params: {
       }
       let updated = file.content;
       for (const patch of patches) {
-        updated = applyV4ADiffToText(updated, patch.diff);
+        if (patch.diff.includes("*** Begin Patch")) {
+          updated = applyPatchToText(updated, patch.diff, file.path).updatedText;
+        } else {
+          updated = applyV4ADiffToText(updated, patch.diff);
+        }
       }
       const mergedDiff = patches.map((p) => p.diff).join("\n");
       return { ...file, updatedContent: updated, diff: mergedDiff };
@@ -347,6 +561,83 @@ export async function confirmGithubAction(params: {
           body: payload.pr.comment,
         });
         reply = `✅ Changes requested: ${out.url}`;
+        break;
+      }
+      case "approve_pr": {
+        const out = await client.approveReview({
+          owner: payload.owner,
+          repo: payload.repo,
+          number: payload.pr.number,
+          body: payload.pr.comment || undefined,
+        });
+        reply = `✅ PR approved: ${out.url}`;
+        break;
+      }
+      case "review_pr_comment": {
+        const out = await client.commentReview({
+          owner: payload.owner,
+          repo: payload.repo,
+          number: payload.pr.number,
+          body: payload.pr.comment,
+        });
+        reply = `✅ Review comment submitted: ${out.url}`;
+        break;
+      }
+      case "dismiss_review": {
+        const out = await client.dismissReview({
+          owner: payload.owner,
+          repo: payload.repo,
+          number: payload.pr.number,
+          reviewId: payload.pr.reviewId,
+          message: payload.pr.comment || "Dismissed review.",
+        });
+        reply = `✅ Review dismissed: ${out.url}`;
+        break;
+      }
+      case "create_branch": {
+        const baseSha = await client.getBranchSha({
+          owner: payload.owner,
+          repo: payload.repo,
+          branch: payload.baseBranch,
+        });
+        await client.createBranch({
+          owner: payload.owner,
+          repo: payload.repo,
+          branch: payload.headBranch,
+          fromSha: baseSha,
+        });
+        reply = `✅ Branch created: ${payload.headBranch}`;
+        break;
+      }
+      case "open_pr": {
+        const pr = await client.createPullRequest({
+          owner: payload.owner,
+          repo: payload.repo,
+          title: payload.title,
+          body: payload.body,
+          head: payload.headBranch,
+          base: payload.baseBranch,
+        });
+        reply = `✅ PR opened: ${pr.url}`;
+        break;
+      }
+      case "merge_pr": {
+        const out = await client.mergePullRequest({
+          owner: payload.owner,
+          repo: payload.repo,
+          number: payload.pr.number,
+          mergeMethod: payload.pr.mergeMethod || "squash",
+        });
+        reply = `✅ PR merged: ${out.url}`;
+        break;
+      }
+      case "update_pr_branch": {
+        const out = await client.updatePullRequestBranch({
+          owner: payload.owner,
+          repo: payload.repo,
+          number: payload.pr.number,
+        });
+        reply = `✅ PR branch updated: ${out.message}`;
         break;
       }
       case "edit_code": {
