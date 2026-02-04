@@ -16,8 +16,7 @@ One-sentence purpose of each source file, grouped by area.
 - `src/domains/ai/search.ts` - Performs web search via Perplexity.
 - `src/domains/ai/image.ts` - Detects image requests and handles image-based search.
 - `src/domains/ai/memory.ts` - Loads and formats long-term memory context.
-- `src/domains/ai/memory-repo.ts` - Persists and queries memory records.
-- `src/domains/ai/pinecone-client.ts` - Pinecone data-plane client for memory search.
+- `src/domains/ai/memory-repo.ts` - Persists and queries memory records using the DB.
 - `src/domains/ai/intents/reminder.ts` - Detects reminder intent via LLM prompt.
 - `src/domains/ai/intents/note.ts` - Detects note save/search intents.
 - `src/domains/ai/intents/habit.ts` - Detects habit log/check/streak intents.
@@ -75,7 +74,6 @@ One-sentence purpose of each source file, grouped by area.
 - `src/todoist.ts` - Re-export of Todoist client.
 - `src/db.ts` - Re-export of shared DB instance.
 - `src/schema.ts` - Re-export of shared DB schema.
-- `src/pinecone-client.ts` - Re-export of Pinecone client.
 - `src/memory-repo.ts` - Re-export of memory repository.
 - `src/webapp-html.ts` - Re-export of embedded webapp HTML.
 
@@ -89,8 +87,7 @@ One-sentence purpose of each source file, grouped by area.
 - `src/scheduler.ts` - Periodic reminder delivery loop.
 
 ## Embeddings & Search
-- `src/embeddings.ts` - Embeddings helper for Pinecone usage.
-- `src/pinecone-client.ts` - Pinecone client re-export (see AI domain).
+- `src/embeddings.ts` - Embeddings helper for semantic similarity and search.
 
 ## Scripts
 - `scripts/add-users-table.ts` - DB migration helper to add users table.
@@ -98,6 +95,5 @@ One-sentence purpose of each source file, grouped by area.
 - `scripts/init-db.ts` - Initializes DB schema.
 - `scripts/migrate.ts` - Runs Drizzle migrations.
 - `scripts/start.ts` - Starts server and scheduler together.
-- `scripts/test-pinecone.ts` - Validates Pinecone connectivity.
 - `scripts/test-reminder.ts` - Manual reminder test helper.
 - `scripts/test-search.ts` - Manual web search test helper.
