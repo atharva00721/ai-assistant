@@ -8,6 +8,28 @@ type PineconeQueryMatch = {
   score: number;
 };
 
+function isPineconeConfigured(): boolean {
+  // Prefer explicit host when provided
+  if (Bun.env.PINECONE_INDEX_HOST) {
+    return Boolean(
+      Bun.env.PINECONE_API_KEY &&
+        Bun.env.PINECONE_NAMESPACE &&
+        Bun.env.PINECONE_TEXT_FIELD,
+    );
+  }
+
+  const indexName = Bun.env.PINECONE_INDEX_NAME;
+  const region = Bun.env.PINECONE_REGION ?? Bun.env.PINECONE_ENVIRONMENT;
+
+  return Boolean(
+    Bun.env.PINECONE_API_KEY &&
+      Bun.env.PINECONE_NAMESPACE &&
+      Bun.env.PINECONE_TEXT_FIELD &&
+      indexName &&
+      region,
+  );
+}
+
 function resolvePineconeBaseUrl(): string {
   const explicitHost = Bun.env.PINECONE_INDEX_HOST;
   if (explicitHost) {
@@ -79,6 +101,9 @@ export async function upsertMemoryRecord(
   const trimmedContent = content.trim();
   if (!trimmedContent) return;
 
+  // If Pinecone isn't configured, skip the vector upsert
+  if (!isPineconeConfigured()) return;
+
   const textField = getPineconeTextField();
   const payload: { records: PineconeRecord[] } = {
     records: [
@@ -106,6 +131,9 @@ export async function queryMemories(params: {
 }): Promise<PineconeQueryMatch[]> {
   const trimmedQuery = params.query.trim();
   if (!trimmedQuery) return [];
+
+  // If Pinecone isn't configured, signal no vector matches so callers can fall back
+  if (!isPineconeConfigured()) return [];
 
   const filter: Record<string, unknown> = { userId: params.userId };
   if (params.kinds && params.kinds.length > 0) {
