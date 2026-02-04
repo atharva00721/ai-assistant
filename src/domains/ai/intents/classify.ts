@@ -76,7 +76,7 @@ function getGlobalClassifyPrompt(options: {
   );
 
   tools.push(
-    "github - GitHub actions: create issues, comment on PRs, assign reviewers, request changes, open/make/merge PRs, list branches/commits, compare commits, set default repo, edit code. Phrases: \"create an issue\", \"comment on PR\", \"assign reviewers\", \"request changes\", \"make a PR\", \"merge PR\", \"list branches\", \"compare commits\", \"set repo\", \"edit code in repo\".",
+    "github - GitHub actions: create issues, comment on PRs, assign reviewers, request changes, open/make/merge PRs, list/close/reopen PRs, list branches/commits, compare commits, list/create tags, set default repo, edit code. Phrases: \"create an issue\", \"comment on PR\", \"assign reviewers\", \"request changes\", \"make a PR\", \"merge PR\", \"list PRs\", \"close PR\", \"reopen PR\", \"list branches\", \"compare commits\", \"list tags\", \"create tag\", \"set repo\", \"edit code in repo\".",
   );
 
   tools.push(

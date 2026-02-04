@@ -18,6 +18,12 @@ export type GithubIntent = {
     | "list_commits"
     | "get_commit"
     | "compare_commits"
+    | "list_prs"
+    | "close_pr"
+    | "reopen_pr"
+    | "list_tags"
+    | "create_tag"
+    | "revert_commit"
     | "create_branch"
     | "open_pr"
     | "merge_pr"
@@ -34,6 +40,8 @@ export type GithubIntent = {
     headBranch?: string;
     title?: string;
     body?: string;
+    state?: "open" | "closed" | "all";
+    count?: number;
   };
   codeEdit?: {
     branchName?: string;
@@ -50,6 +58,10 @@ export type GithubIntent = {
   compare?: {
     base: string;
     head: string;
+  };
+  tag?: {
+    name: string;
+    sha?: string;
   };
 };
 
@@ -80,6 +92,12 @@ Supported actions:
 - list_commits: list commits on a branch/ref
 - get_commit: show details for a commit SHA
 - compare_commits: compare two refs or commit SHAs
+- list_prs: list pull requests
+- close_pr: close a pull request
+- reopen_pr: reopen a pull request
+- list_tags: list tags
+- create_tag: create a lightweight tag (refs/tags/<name>)
+- revert_commit: create a revert commit from a commit SHA
 - create_branch: create a branch from a base branch
 - open_pr: open PR from branch
 - merge_pr: merge a PR
@@ -129,6 +147,24 @@ If action is get_commit:
 
 If action is compare_commits:
 {"action":"compare_commits","repo":"owner/name?","compare":{"base":"main","head":"feature/branch"}}
+
+If action is list_prs:
+{"action":"list_prs","repo":"owner/name?","pr":{"state":"open","count":10}}
+
+If action is close_pr:
+{"action":"close_pr","repo":"owner/name?","pr":{"number":123}}
+
+If action is reopen_pr:
+{"action":"reopen_pr","repo":"owner/name?","pr":{"number":123}}
+
+If action is list_tags:
+{"action":"list_tags","repo":"owner/name?"}
+
+If action is create_tag:
+{"action":"create_tag","repo":"owner/name?","tag":{"name":"v1.2.3","sha":"abc123"}}
+
+If action is revert_commit:
+{"action":"revert_commit","repo":"owner/name?","commit":{"sha":"abcdef1234"}}
 
 If action is create_branch:
 {"action":"create_branch","repo":"owner/name?","pr":{"baseBranch":"main","headBranch":"feature/name"}}

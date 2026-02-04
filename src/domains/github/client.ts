@@ -141,6 +141,39 @@ export interface GithubClient {
     commits: Array<{ sha: string; message: string; author?: string; url: string }>;
     files: Array<{ filename: string; status: string; additions: number; deletions: number; changes: number }>;
   }>;
+
+  listPullRequests(params: {
+    owner: string;
+    repo: string;
+    state?: "open" | "closed" | "all";
+    perPage?: number;
+  }): Promise<Array<{ number: number; title: string; url: string; author?: string }>>;
+
+  updatePullRequestState(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    state: "open" | "closed";
+  }): Promise<{ url: string }>;
+
+  listTags(params: {
+    owner: string;
+    repo: string;
+    perPage?: number;
+  }): Promise<Array<{ name: string; sha: string }>>;
+
+  createTag(params: {
+    owner: string;
+    repo: string;
+    tag: string;
+    sha: string;
+  }): Promise<void>;
+
+  revertCommit(params: {
+    owner: string;
+    repo: string;
+    sha: string;
+  }): Promise<{ url: string }>;
 }
 
 export function splitRepo(repo: string): { owner: string; repo: string } {

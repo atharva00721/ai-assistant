@@ -375,4 +375,81 @@ export class RestGithubClient implements GithubClient {
       files: data.files || [],
     };
   }
+
+  async listPullRequests(params: {
+    owner: string;
+    repo: string;
+    state?: "open" | "closed" | "all";
+    perPage?: number;
+  }): Promise<Array<{ number: number; title: string; url: string; author?: string }>> {
+    const perPage = params.perPage ?? 10;
+    const state = params.state ?? "open";
+    const data = await this.request<
+      Array<{ number: number; html_url: string; title: string; user?: { login?: string } }>
+    >(`/repos/${params.owner}/${params.repo}/pulls?per_page=${perPage}&state=${state}`);
+    return data.map((pr) => ({
+      number: pr.number,
+      title: pr.title,
+      url: pr.html_url,
+      author: pr.user?.login,
+    }));
+  }
+
+  async updatePullRequestState(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    state: "open" | "closed";
+  }): Promise<{ url: string }> {
+    const data = await this.request<{ html_url: string }>(
+      `/repos/${params.owner}/${params.repo}/pulls/${params.number}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ state: params.state }),
+      },
+    );
+    return { url: data.html_url };
+  }
+
+  async listTags(params: {
+    owner: string;
+    repo: string;
+    perPage?: number;
+  }): Promise<Array<{ name: string; sha: string }>> {
+    const perPage = params.perPage ?? 30;
+    const data = await this.request<Array<{ name: string; commit: { sha: string } }>>(
+      `/repos/${params.owner}/${params.repo}/tags?per_page=${perPage}`,
+    );
+    return data.map((tag) => ({ name: tag.name, sha: tag.commit?.sha || "" }));
+  }
+
+  async createTag(params: {
+    owner: string;
+    repo: string;
+    tag: string;
+    sha: string;
+  }): Promise<void> {
+    await this.request(`/repos/${params.owner}/${params.repo}/git/refs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ref: `refs/tags/${params.tag}`, sha: params.sha }),
+    });
+  }
+
+  async revertCommit(params: {
+    owner: string;
+    repo: string;
+    sha: string;
+  }): Promise<{ url: string }> {
+    const data = await this.request<{ html_url: string }>(
+      `/repos/${params.owner}/${params.repo}/commits/${params.sha}/revert`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+    return { url: data.html_url };
+  }
 }

@@ -418,6 +418,82 @@ export async function handleGithubIntent(params: {
     };
   }
 
+  if (intent.action === "list_prs") {
+    const state = intent.pr?.state || "open";
+    const rawCount = Number(intent.pr?.count);
+    const count = Math.min(Math.max(Number.isFinite(rawCount) ? rawCount : 10, 1), 20);
+    const prs = await client.listPullRequests({ owner, repo: repoName, state, perPage: count });
+    if (prs.length === 0) {
+      return { reply: `No ${state} pull requests found.` };
+    }
+    const lines = prs.map((pr, i) => {
+      const author = pr.author ? ` by ${pr.author}` : "";
+      return `${i + 1}. #${pr.number} ${pr.title}${author}`;
+    });
+    return { reply: `📌 ${state.toUpperCase()} PRs:\n\n${lines.join("\n")}` };
+  }
+
+  if (intent.action === "close_pr" && intent.pr?.number) {
+    const payload = { action: "close_pr", owner, repo: repoName, pr: { number: intent.pr.number } };
+    const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
+    if (!pending) return { reply: "Failed to create pending action." };
+    const reply = `🧯 Close PR #${intent.pr.number}`;
+    return { reply, replyMarkup: buildConfirmKeyboard(pending.id) };
+  }
+  if (intent.action === "close_pr") {
+    return { reply: "Please specify a PR number to close (e.g., close PR #123)." };
+  }
+
+  if (intent.action === "reopen_pr" && intent.pr?.number) {
+    const payload = { action: "reopen_pr", owner, repo: repoName, pr: { number: intent.pr.number } };
+    const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
+    if (!pending) return { reply: "Failed to create pending action." };
+    const reply = `♻️ Reopen PR #${intent.pr.number}`;
+    return { reply, replyMarkup: buildConfirmKeyboard(pending.id) };
+  }
+  if (intent.action === "reopen_pr") {
+    return { reply: "Please specify a PR number to reopen (e.g., reopen PR #123)." };
+  }
+
+  if (intent.action === "list_tags") {
+    const tags = await client.listTags({ owner, repo: repoName, perPage: 30 });
+    if (tags.length === 0) {
+      return { reply: "No tags found." };
+    }
+    const lines = tags.map((t, i) => {
+      const shortSha = t.sha ? t.sha.slice(0, 7) : "unknown";
+      return `${i + 1}. ${t.name} (${shortSha})`;
+    });
+    return { reply: `🏷️ Tags:\n\n${lines.join("\n")}` };
+  }
+
+  if (intent.action === "create_tag") {
+    const tagName = intent.tag?.name?.trim();
+    if (!tagName) {
+      return { reply: "Please provide a tag name (e.g., create tag v1.2.3)." };
+    }
+    const repoInfo = await client.getRepo({ owner, repo: repoName });
+    const baseBranch = repoInfo.defaultBranch;
+    const sha = intent.tag?.sha?.trim() || await client.getBranchSha({ owner, repo: repoName, branch: baseBranch });
+    const payload = { action: "create_tag", owner, repo: repoName, tag: { name: tagName, sha } };
+    const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
+    if (!pending) return { reply: "Failed to create pending action." };
+    const reply = `🏷️ Create tag ${tagName} at ${sha.slice(0, 7)}`;
+    return { reply, replyMarkup: buildConfirmKeyboard(pending.id) };
+  }
+
+  if (intent.action === "revert_commit") {
+    const sha = intent.commit?.sha?.trim();
+    if (!sha) {
+      return { reply: "Please provide a commit SHA to revert (e.g., revert commit abc1234)." };
+    }
+    const payload = { action: "revert_commit", owner, repo: repoName, commit: { sha } };
+    const pending = await createPendingAction({ userId: user.userId, type: "github", payload, expiresAt });
+    if (!pending) return { reply: "Failed to create pending action." };
+    const reply = `⏪ Revert commit ${sha.slice(0, 7)}`;
+    return { reply, replyMarkup: buildConfirmKeyboard(pending.id) };
+  }
+
   if (intent.action === "create_branch") {
     const headBranch = intent.pr?.headBranch?.trim();
     if (!headBranch) {
@@ -752,6 +828,45 @@ export async function confirmGithubAction(params: {
           number: payload.pr.number,
         });
         reply = `✅ PR branch updated: ${out.message}`;
+        break;
+      }
+      case "close_pr": {
+        const out = await client.updatePullRequestState({
+          owner: payload.owner,
+          repo: payload.repo,
+          number: payload.pr.number,
+          state: "closed",
+        });
+        reply = `✅ PR closed: ${out.url}`;
+        break;
+      }
+      case "reopen_pr": {
+        const out = await client.updatePullRequestState({
+          owner: payload.owner,
+          repo: payload.repo,
+          number: payload.pr.number,
+          state: "open",
+        });
+        reply = `✅ PR reopened: ${out.url}`;
+        break;
+      }
+      case "create_tag": {
+        await client.createTag({
+          owner: payload.owner,
+          repo: payload.repo,
+          tag: payload.tag.name,
+          sha: payload.tag.sha,
+        });
+        reply = `✅ Tag created: ${payload.tag.name}`;
+        break;
+      }
+      case "revert_commit": {
+        const out = await client.revertCommit({
+          owner: payload.owner,
+          repo: payload.repo,
+          sha: payload.commit.sha,
+        });
+        reply = `✅ Revert created: ${out.url}`;
         break;
       }
       case "edit_code": {
