@@ -219,6 +219,17 @@ export function getWebhookHandler() {
         await ctx.answerCallbackQuery({ text: "Canceled" });
         await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
         await ctx.reply(data.reply || "Canceled.");
+      } else if (callbackData.startsWith("gh_repo_")) {
+        const actionId = parseInt(callbackData.split("_")[2] || "0");
+        const response = await fetch(`${apiBaseUrl}/github/repo/select`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ actionId, userId }),
+        });
+        const data = (await response.json()) as { reply?: string };
+        await ctx.answerCallbackQuery({ text: "Repo selected" });
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
+        await ctx.reply(data.reply || "Repo selected.");
       }
     } catch (error) {
       console.error("Error handling callback:", error);

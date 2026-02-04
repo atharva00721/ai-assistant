@@ -6,6 +6,7 @@ import { decryptGithubToken, getUser, setGithubRepo } from "../users/service.js"
 import type { GithubIntent } from "../ai/intents/github.js";
 
 const MAX_EDIT_FILES = 5;
+const MAX_REPO_BUTTONS = 10;
 const PENDING_EXPIRES_MINUTES = 30;
 
 function getGithubClient(token: string): GithubClient {
@@ -21,6 +22,38 @@ function buildConfirmKeyboard(actionId: number) {
       ],
     ],
   };
+}
+
+async function buildRepoSelectKeyboard(params: {
+  userId: string;
+  repos: Array<{ fullName: string }>;
+}) {
+  const expiresAt = new Date(Date.now() + PENDING_EXPIRES_MINUTES * 60 * 1000);
+  const limited = params.repos.slice(0, MAX_REPO_BUTTONS);
+  const pendingActions = await Promise.all(
+    limited.map(async (repo) => {
+      const pending = await createPendingAction({
+        userId: params.userId,
+        type: "github_repo_select",
+        payload: { repo: repo.fullName },
+        expiresAt,
+      });
+      return pending ? { pendingId: pending.id, repo: repo.fullName } : null;
+    }),
+  );
+
+  const buttons = pendingActions.filter(Boolean) as Array<{ pendingId: number; repo: string }>;
+  const inline_keyboard: Array<Array<{ text: string; callback_data: string }>> = [];
+
+  for (let i = 0; i < buttons.length; i += 2) {
+    const row = buttons.slice(i, i + 2).map((btn) => ({
+      text: btn.repo,
+      callback_data: `gh_repo_${btn.pendingId}`,
+    }));
+    inline_keyboard.push(row);
+  }
+
+  return { inline_keyboard };
 }
 
 function getTokenOrThrow(user: any): string {
@@ -245,8 +278,35 @@ export async function handleGithubIntent(params: {
     if (repos.length === 0) {
       return { reply: "No repos found for your account." };
     }
-    const lines = repos.map((r, i) => `${i + 1}. ${r.fullName}${r.private ? " (private)" : ""}`);
-    return { reply: `📦 Your repos:\n\n${lines.join("\n")}\n\nSet default with: /github repo owner/name` };
+    const limited = repos.slice(0, MAX_REPO_BUTTONS);
+    const lines = limited.map((r, i) => `${i + 1}. ${r.fullName}${r.private ? " (private)" : ""}`);
+    const replyMarkup = await buildRepoSelectKeyboard({ userId: user.userId, repos });
+    const limitNote = repos.length > MAX_REPO_BUTTONS ? `\n\nShowing first ${MAX_REPO_BUTTONS}.` : "";
+    return { reply: `📦 Your repos:\n\n${lines.join("\n")}${limitNote}\n\nPick one to set as default.`, replyMarkup };
+  }
+
+  if (intent.action === "select_repo") {
+    const repos = await client.listRepos({ perPage: 30 });
+    if (repos.length === 0) {
+      return { reply: "No repos found for your account." };
+    }
+    const replyMarkup = await buildRepoSelectKeyboard({ userId: user.userId, repos });
+    const limitNote = repos.length > MAX_REPO_BUTTONS ? `\n\nShowing first ${MAX_REPO_BUTTONS}.` : "";
+    return { reply: `Choose a repo to set as default.${limitNote}`, replyMarkup };
+  }
+
+  if (intent.action === "set_default_repo") {
+    const normalized = normalizeRepoName(intent.repo);
+    if (!normalized) {
+      const repos = await client.listRepos({ perPage: 30 });
+      if (repos.length === 0) {
+        return { reply: "No repos found for your account." };
+      }
+      const replyMarkup = await buildRepoSelectKeyboard({ userId: user.userId, repos });
+      return { reply: "Pick a repo to set as default.", replyMarkup };
+    }
+    await setGithubRepo(user.userId, normalized);
+    return { reply: `✅ Default repo set to ${normalized}` };
   }
 
   const normalizedIntentRepo = normalizeRepoName(intent.repo);
@@ -268,7 +328,12 @@ export async function handleGithubIntent(params: {
   }
 
   if (!repo) {
-    return { reply: "Please set a default repo with /github repo owner/name" };
+    const repos = await client.listRepos({ perPage: 30 });
+    if (repos.length === 0) {
+      return { reply: "Please set a default repo, but I couldn't find any repos for your account." };
+    }
+    const replyMarkup = await buildRepoSelectKeyboard({ userId: user.userId, repos });
+    return { reply: "Pick a default repo to continue.", replyMarkup };
   }
   const { owner, repo: repoName } = splitRepo(repo);
   const expiresAt = new Date(Date.now() + PENDING_EXPIRES_MINUTES * 60 * 1000);
@@ -282,6 +347,75 @@ export async function handleGithubIntent(params: {
     if (!pending) return { reply: "Failed to create pending action." };
     const reply = `🧾 Issue preview\nTitle: ${intent.issue.title}\nBody: ${intent.issue.body || "(empty)"}\nLabels: ${intent.issue.labels?.join(", ") || "(none)"}`;
     return { reply, replyMarkup: buildConfirmKeyboard(pending!.id) };
+  }
+
+  if (intent.action === "list_branches") {
+    const branches = await client.listBranches({ owner, repo: repoName, perPage: 30 });
+    if (branches.length === 0) {
+      return { reply: "No branches found." };
+    }
+    const lines = branches.map((b, i) => `${i + 1}. ${b.name}`);
+    return { reply: `🌿 Branches:\n\n${lines.join("\n")}` };
+  }
+
+  if (intent.action === "list_commits") {
+    const repoInfo = await client.getRepo({ owner, repo: repoName });
+    const ref = intent.commit?.ref?.trim() || repoInfo.defaultBranch;
+    const rawCount = Number(intent.commit?.count);
+    const count = Math.min(Math.max(Number.isFinite(rawCount) ? rawCount : 10, 1), 20);
+    const commits = await client.listCommits({ owner, repo: repoName, ref, perPage: count });
+    if (commits.length === 0) {
+      return { reply: `No commits found on ${ref}.` };
+    }
+    const lines = commits.map((c, i) => {
+      const shortSha = c.sha.slice(0, 7);
+      const firstLine = c.message.split("\n")[0] || "(no message)";
+      const author = c.author ? ` by ${c.author}` : "";
+      return `${i + 1}. ${shortSha} ${firstLine}${author}`;
+    });
+    return { reply: `🧾 Recent commits on ${ref}:\n\n${lines.join("\n")}` };
+  }
+
+  if (intent.action === "get_commit") {
+    const sha = intent.commit?.sha?.trim();
+    if (!sha) {
+      return { reply: "Please provide a commit SHA (e.g., show commit abc1234)." };
+    }
+    const commit = await client.getCommit({ owner, repo: repoName, sha });
+    const shortSha = commit.sha.slice(0, 7);
+    const firstLine = commit.message.split("\n")[0] || "(no message)";
+    const author = commit.author ? ` by ${commit.author}` : "";
+    return { reply: `🔎 Commit ${shortSha}${author}\n${firstLine}\n${commit.url}` };
+  }
+
+  if (intent.action === "compare_commits") {
+    const base = intent.compare?.base?.trim();
+    const head = intent.compare?.head?.trim();
+    if (!base || !head) {
+      return { reply: "Please provide two refs to compare (e.g., compare main vs feature/my-branch)." };
+    }
+    const comparison = await client.compareCommits({ owner, repo: repoName, base, head });
+    const commitLines = comparison.commits.slice(0, 10).map((c, i) => {
+      const shortSha = c.sha.slice(0, 7);
+      const firstLine = c.message.split("\n")[0] || "(no message)";
+      const author = c.author ? ` by ${c.author}` : "";
+      return `${i + 1}. ${shortSha} ${firstLine}${author}`;
+    });
+    const fileLines = comparison.files.slice(0, 10).map((f, i) => {
+      return `${i + 1}. ${f.filename} (${f.status}, +${f.additions}/-${f.deletions})`;
+    });
+    const extraCommits =
+      comparison.commits.length > 10 ? `\n…and ${comparison.commits.length - 10} more commits.` : "";
+    const extraFiles =
+      comparison.files.length > 10 ? `\n…and ${comparison.files.length - 10} more files.` : "";
+    const summary =
+      `🔀 Compare ${base} → ${head}\n` +
+      `Ahead by ${comparison.aheadBy}, behind by ${comparison.behindBy}, total commits ${comparison.totalCommits}.`;
+    const commitsBlock = commitLines.length > 0 ? `Commits:\n${commitLines.join("\n")}${extraCommits}` : "Commits:\n(none)";
+    const filesBlock = fileLines.length > 0 ? `Files:\n${fileLines.join("\n")}${extraFiles}` : "Files:\n(none)";
+    return {
+      reply: `${summary}\n\n${commitsBlock}\n\n${filesBlock}`,
+    };
   }
 
   if (intent.action === "create_branch") {
@@ -693,4 +827,29 @@ export async function cancelGithubAction(params: { userId: string; actionId: num
   }
   await deletePendingAction(pending.id);
   return { reply: "Canceled." };
+}
+
+export async function selectGithubRepo(params: {
+  userId: string;
+  actionId: number;
+}): Promise<{ reply: string }> {
+  const pending = await getPendingActionById(params.actionId);
+  if (!pending || pending.userId !== params.userId || pending.type !== "github_repo_select") {
+    return { reply: "Repo selection not found or expired." };
+  }
+
+  if (pending.expiresAt && new Date(pending.expiresAt) < new Date()) {
+    await deletePendingAction(pending.id);
+    return { reply: "Repo selection expired. Please try again." };
+  }
+
+  const repo = normalizeRepoName(pending.payload?.repo);
+  if (!repo) {
+    await deletePendingAction(pending.id);
+    return { reply: "Invalid repo selection." };
+  }
+
+  await setGithubRepo(params.userId, repo);
+  await deletePendingAction(pending.id);
+  return { reply: `✅ Default repo set to ${repo}` };
 }

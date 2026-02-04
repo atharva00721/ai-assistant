@@ -12,6 +12,12 @@ export type GithubIntent = {
     | "dismiss_review"
     | "edit_code"
     | "list_repos"
+    | "select_repo"
+    | "set_default_repo"
+    | "list_branches"
+    | "list_commits"
+    | "get_commit"
+    | "compare_commits"
     | "create_branch"
     | "open_pr"
     | "merge_pr"
@@ -36,6 +42,15 @@ export type GithubIntent = {
     instructions: string;
     directCommit?: boolean;
   };
+  commit?: {
+    sha?: string;
+    ref?: string;
+    count?: number;
+  };
+  compare?: {
+    base: string;
+    head: string;
+  };
 };
 
 function normalizeAssistantJson(text: string): string {
@@ -59,6 +74,12 @@ Supported actions:
 - dismiss_review: dismiss a review (requires reviewId)
 - edit_code: change code and commit or open a PR
 - list_repos: list repositories the user can access
+- select_repo: show repo list so user can pick a default
+- set_default_repo: set default repo for future actions
+- list_branches: list branches in a repo
+- list_commits: list commits on a branch/ref
+- get_commit: show details for a commit SHA
+- compare_commits: compare two refs or commit SHAs
 - create_branch: create a branch from a base branch
 - open_pr: open PR from branch
 - merge_pr: merge a PR
@@ -91,6 +112,24 @@ If action is edit_code:
 If action is list_repos:
 {"action":"list_repos"}
 
+If action is select_repo:
+{"action":"select_repo"}
+
+If action is set_default_repo:
+{"action":"set_default_repo","repo":"owner/name"}
+
+If action is list_branches:
+{"action":"list_branches","repo":"owner/name?"}
+
+If action is list_commits:
+{"action":"list_commits","repo":"owner/name?","commit":{"ref":"main","count":10}}
+
+If action is get_commit:
+{"action":"get_commit","repo":"owner/name?","commit":{"sha":"abcdef1234"}}
+
+If action is compare_commits:
+{"action":"compare_commits","repo":"owner/name?","compare":{"base":"main","head":"feature/branch"}}
+
 If action is create_branch:
 {"action":"create_branch","repo":"owner/name?","pr":{"baseBranch":"main","headBranch":"feature/name"}}
 
@@ -106,6 +145,7 @@ If action is update_pr_branch:
 Notes:
 - Strip @ from reviewer usernames.
 - If repo not specified, omit it.
+- For compare_commits, include base and head (branch, tag, or commit SHA).
 - If action is unclear or not GitHub-related, reply NOT_GITHUB.
 
 User message: `;

@@ -107,7 +107,16 @@ export function registerAiRoutes(app: Elysia) {
         if (sub === "repo") {
           const rawRepo = parts[2];
           if (!rawRepo) {
-            return { reply: "Usage: /github repo owner/name" };
+            if (!user?.githubToken) {
+              return { reply: "GitHub not connected. Use /github connect or /github token <PAT>." };
+            }
+            try {
+              const out = await handleGithubIntent({ user, intent: { action: "select_repo" } });
+              return { reply: out.reply, replyMarkup: out.replyMarkup };
+            } catch (err) {
+              console.error("GitHub repo select error:", err);
+              return { reply: "Failed to list repos. Check token permissions." };
+            }
           }
 
           try {

@@ -109,6 +109,38 @@ export interface GithubClient {
   }): Promise<{ message: string }>;
 
   listRepos(params: { perPage?: number }): Promise<Array<{ fullName: string; private: boolean }>>;
+
+  listBranches(params: {
+    owner: string;
+    repo: string;
+    perPage?: number;
+  }): Promise<Array<{ name: string }>>;
+
+  listCommits(params: {
+    owner: string;
+    repo: string;
+    ref?: string;
+    perPage?: number;
+  }): Promise<Array<{ sha: string; message: string; author?: string; url: string }>>;
+
+  getCommit(params: {
+    owner: string;
+    repo: string;
+    sha: string;
+  }): Promise<{ sha: string; message: string; author?: string; url: string }>;
+
+  compareCommits(params: {
+    owner: string;
+    repo: string;
+    base: string;
+    head: string;
+  }): Promise<{
+    aheadBy: number;
+    behindBy: number;
+    totalCommits: number;
+    commits: Array<{ sha: string; message: string; author?: string; url: string }>;
+    files: Array<{ filename: string; status: string; additions: number; deletions: number; changes: number }>;
+  }>;
 }
 
 export function splitRepo(repo: string): { owner: string; repo: string } {

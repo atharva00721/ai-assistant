@@ -3,7 +3,7 @@ import { randomBytes } from "crypto";
 import { createPendingAction, deletePendingAction, findPendingActionByTypeAndState } from "./pending-actions-repo.js";
 import { setGithubToken, setGithubUsername } from "../users/service.js";
 import { fetchGithubUsername } from "./auth.js";
-import { confirmGithubAction, cancelGithubAction } from "./service.js";
+import { confirmGithubAction, cancelGithubAction, selectGithubRepo } from "./service.js";
 
 export function registerGithubRoutes(app: Elysia) {
   app.get("/github/oauth/start", async ({ query, set }) => {
@@ -128,6 +128,23 @@ export function registerGithubRoutes(app: Elysia) {
         return { reply: "userId and actionId required" };
       }
       return await cancelGithubAction({ userId: body.userId, actionId: body.actionId });
+    },
+    {
+      body: t.Object({
+        userId: t.String(),
+        actionId: t.Number(),
+      }),
+    },
+  );
+
+  app.post(
+    "/github/repo/select",
+    async ({ body, set }) => {
+      if (!body.userId || !body.actionId) {
+        set.status = 400;
+        return { reply: "userId and actionId required" };
+      }
+      return await selectGithubRepo({ userId: body.userId, actionId: body.actionId });
     },
     {
       body: t.Object({
