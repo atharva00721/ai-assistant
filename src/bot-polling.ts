@@ -1,5 +1,7 @@
 import { Bot } from "grammy";
 import { createUpdateDeduper } from "./telegram-dedupe.js";
+import { detectSearchIntent } from "./domains/ai/intents/search.js";
+import { hasSearch } from "./domains/ai/clients.js";
 
 const token = Bun.env.BOT_TOKEN;
 if (!token) {
@@ -25,6 +27,10 @@ bot.on("message:text", async (ctx) => {
   console.log(`Received message from ${userId}: ${message}`);
 
   try {
+    if (hasSearch && detectSearchIntent(message)) {
+      await ctx.reply("🔍 Searching the web, this might take a few seconds...");
+    }
+
     // Try to get timezone from Telegram user language (rough estimate)
     // Users can set exact timezone with /timezone command
     const response = await fetch(`${apiBaseUrl}/ask`, {

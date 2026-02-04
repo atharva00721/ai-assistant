@@ -1,5 +1,7 @@
 import { Bot, webhookCallback } from "grammy";
 import { createUpdateDeduper } from "./telegram-dedupe.js";
+import { detectSearchIntent } from "./domains/ai/intents/search.js";
+import { hasSearch } from "./domains/ai/clients.js";
 
 const apiBaseUrl = Bun.env.API_BASE_URL || "http://localhost:3000";
 
@@ -95,6 +97,12 @@ export function getWebhookHandler() {
     if (!userId) return;
 
     try {
+      // For explicit web/search-style questions, send a quick heads-up so
+      // users know we're doing a slower web lookup.
+      if (hasSearch && detectSearchIntent(message)) {
+        await ctx.reply("🔍 Searching the web, this might take a few seconds...");
+      }
+
       const from = ctx.from;
       const response = await fetch(`${apiBaseUrl}/ask`, {
         method: "POST",
