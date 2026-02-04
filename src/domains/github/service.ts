@@ -10,14 +10,42 @@ const MAX_EDIT_FILES = 5;
 const PENDING_EXPIRES_MINUTES = 30;
 
 function getGithubClient(token: string): GithubClient {
-  if (Bun.env.GITHUB_MCP_ENABLED === "true") {
-    try {
-      return new McpGithubClient();
-    } catch (err) {
-      console.warn("MCP not configured, falling back to REST:", err);
-    }
+  const rest = new RestGithubClient(token);
+  if (Bun.env.GITHUB_MCP_ENABLED !== "true") {
+    return rest;
   }
-  return new RestGithubClient(token);
+  let mcp: GithubClient | null = null;
+  try {
+    mcp = new McpGithubClient();
+  } catch (err) {
+    console.warn("MCP not configured, falling back to REST:", err);
+    return rest;
+  }
+
+  const wrap = <T extends (...args: any[]) => Promise<any>>(fn: T, fallback: T): T => {
+    return (async (...args: Parameters<T>) => {
+      try {
+        return await fn(...args);
+      } catch (err) {
+        console.warn("MCP call failed, falling back to REST:", err);
+        return await fallback(...args);
+      }
+    }) as T;
+  };
+
+  return {
+    createIssue: wrap(mcp.createIssue.bind(mcp), rest.createIssue.bind(rest)),
+    commentOnPr: wrap(mcp.commentOnPr.bind(mcp), rest.commentOnPr.bind(rest)),
+    assignReviewers: wrap(mcp.assignReviewers.bind(mcp), rest.assignReviewers.bind(rest)),
+    requestChanges: wrap(mcp.requestChanges.bind(mcp), rest.requestChanges.bind(rest)),
+    getRepo: wrap(mcp.getRepo.bind(mcp), rest.getRepo.bind(rest)),
+    getBranchSha: wrap(mcp.getBranchSha.bind(mcp), rest.getBranchSha.bind(rest)),
+    getPr: wrap(mcp.getPr.bind(mcp), rest.getPr.bind(rest)),
+    getFile: wrap(mcp.getFile.bind(mcp), rest.getFile.bind(rest)),
+    createBranch: wrap(mcp.createBranch.bind(mcp), rest.createBranch.bind(rest)),
+    updateFile: wrap(mcp.updateFile.bind(mcp), rest.updateFile.bind(rest)),
+    createPullRequest: wrap(mcp.createPullRequest.bind(mcp), rest.createPullRequest.bind(rest)),
+  };
 }
 
 function buildConfirmKeyboard(actionId: number) {

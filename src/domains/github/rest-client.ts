@@ -111,7 +111,7 @@ export class RestGithubClient implements GithubClient {
       `/repos/${params.owner}/${params.repo}/git/refs/heads/${params.branch}`,
     );
     const sha = data.object?.sha;
-    if (!sha) throw new Error(\"Missing branch SHA\");
+    if (!sha) throw new Error("Missing branch SHA");
     return sha;
   }
 

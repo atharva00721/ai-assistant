@@ -90,6 +90,16 @@ Start the scheduler (in a separate terminal):
 bun run src/scheduler.ts
 ```
 
+### GitHub Connection Test
+
+Run a quick read-only check against GitHub:
+
+```bash
+GITHUB_TEST_TOKEN=your_token \
+GITHUB_TEST_REPO=owner/name \
+bun run test:github
+```
+
 ### Telegram bot mode
 
 Use **one** bot mode at a time:
