@@ -268,6 +268,21 @@ export async function handleGithubIntent(params: {
   intent: GithubIntent;
 }): Promise<{ reply: string; replyMarkup?: any }> {
   const { user, intent } = params;
+  if (!user?.githubToken) {
+    return { reply: "GitHub is not connected. Use /github connect or /github token <PAT>." };
+  }
+  const token = getTokenOrThrow(user);
+  const client = getGithubClient(token);
+
+  if (intent.action === "list_repos") {
+    const repos = await client.listRepos({ perPage: 30 });
+    if (repos.length === 0) {
+      return { reply: "No repos found for your account." };
+    }
+    const lines = repos.map((r, i) => `${i + 1}. ${r.fullName}${r.private ? " (private)" : ""}`);
+    return { reply: `📦 Your repos:\n\n${lines.join("\n")}\n\nSet default with: /github repo owner/name` };
+  }
+
   const repo = intent.repo || user?.githubRepo;
   if (!repo) {
     return { reply: "Please set a default repo with /github repo owner/name" };
@@ -275,12 +290,6 @@ export async function handleGithubIntent(params: {
   if (user?.githubRepo && intent.repo && intent.repo !== user.githubRepo) {
     return { reply: `This bot is limited to a single repo in v1. Use /github repo ${intent.repo} to switch.` };
   }
-
-  if (!user?.githubToken) {
-    return { reply: "GitHub is not connected. Use /github connect or /github token <PAT>." };
-  }
-  const token = getTokenOrThrow(user);
-  const client = getGithubClient(token);
   const { owner, repo: repoName } = splitRepo(repo);
   const expiresAt = new Date(Date.now() + PENDING_EXPIRES_MINUTES * 60 * 1000);
 
@@ -293,15 +302,6 @@ export async function handleGithubIntent(params: {
     if (!pending) return { reply: "Failed to create pending action." };
     const reply = `🧾 Issue preview\nTitle: ${intent.issue.title}\nBody: ${intent.issue.body || "(empty)"}\nLabels: ${intent.issue.labels?.join(", ") || "(none)"}`;
     return { reply, replyMarkup: buildConfirmKeyboard(pending!.id) };
-  }
-
-  if (intent.action === "list_repos") {
-    const repos = await client.listRepos({ perPage: 30 });
-    if (repos.length === 0) {
-      return { reply: "No repos found for your account." };
-    }
-    const lines = repos.map((r, i) => `${i + 1}. ${r.fullName}${r.private ? " (private)" : ""}`);
-    return { reply: `📦 Your repos:\n\n${lines.join("\n")}\n\nSet default with: /github repo owner/name` };
   }
 
   if (intent.action === "create_branch") {
