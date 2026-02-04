@@ -81,6 +81,17 @@ function normalizeReviewers(reviewers?: string[]) {
     .filter(Boolean);
 }
 
+function normalizeRepoName(repo?: string): string | null {
+  if (!repo) return null;
+  const trimmed = repo.trim();
+  if (!trimmed) return null;
+  if (/^(this|current|default)\s*repo$/i.test(trimmed)) return null;
+  if (!trimmed.includes("/")) return null;
+  const { owner, repo: repoName } = splitRepo(trimmed);
+  if (!owner || !repoName) return null;
+  return `${owner.toLowerCase()}/${repoName.toLowerCase()}`;
+}
+
 async function runCodexApplyPatch(params: {
   files: Array<{ path: string; content: string }>;
   instructions: string;
@@ -283,11 +294,13 @@ export async function handleGithubIntent(params: {
     return { reply: `📦 Your repos:\n\n${lines.join("\n")}\n\nSet default with: /github repo owner/name` };
   }
 
-  const repo = intent.repo || user?.githubRepo;
+  const normalizedIntentRepo = normalizeRepoName(intent.repo);
+  const normalizedUserRepo = normalizeRepoName(user?.githubRepo);
+  const repo = normalizedIntentRepo || normalizedUserRepo;
   if (!repo) {
     return { reply: "Please set a default repo with /github repo owner/name" };
   }
-  if (user?.githubRepo && intent.repo && intent.repo !== user.githubRepo) {
+  if (normalizedUserRepo && normalizedIntentRepo && normalizedIntentRepo !== normalizedUserRepo) {
     return { reply: `This bot is limited to a single repo in v1. Use /github repo ${intent.repo} to switch.` };
   }
   const { owner, repo: repoName } = splitRepo(repo);

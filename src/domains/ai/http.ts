@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import { askAI } from "./index.js";
+import { detectGithubIntent } from "./intents/github.js";
 import { buildTodoistConnectedReply, buildTodoistHelpReply, buildTodoistTokenPrompt, isTodoistDisconnect, isTodoistHelp, parseTodoistTokenCommand } from "../todoist/commands.js";
 import { handleListReminders, handleCancelReminderCommand, createReminderFromAI, createFocusReminder } from "../reminders/service.js";
 import { handleNoteIntent } from "../notes/service.js";
@@ -144,7 +145,24 @@ export function registerAiRoutes(app: Elysia) {
           };
         }
 
-        return { reply: "GitHub commands: /github connect | /github token <PAT> | /github repo owner/name | /github status | /github repos | /github user" };
+        const fallbackText = parts.slice(1).join(" ").trim();
+        if (fallbackText) {
+          try {
+            const fallbackIntent = await detectGithubIntent(fallbackText);
+            if (fallbackIntent) {
+              const out = await handleGithubIntent({ user, intent: fallbackIntent });
+              return { reply: out.reply, replyMarkup: out.replyMarkup };
+            }
+          } catch (error) {
+            console.error("GitHub fallback intent error:", error);
+          }
+        }
+
+        return {
+          reply:
+            "GitHub commands: /github connect | /github token <PAT> | /github repo owner/name | /github status | /github repos | /github user\n\n" +
+            "Tip: You can also say /github create an issue titled 'Bug' or /github comment on PR #123.",
+        };
       }
 
       if (
