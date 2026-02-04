@@ -140,6 +140,10 @@ export async function classifyIntentDetailed(
     const { text } = await generateText({
       model: textModel,
       prompt: getGlobalClassifyPrompt(options) + message,
+      // Classification only needs a tiny JSON object, so we cap
+      // generation length to keep latency low and avoid rambly outputs.
+      maxTokens: 128,
+      temperature: 0,
     });
 
     const raw = normalizeJsonFromModel(text);

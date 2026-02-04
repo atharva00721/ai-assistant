@@ -12,7 +12,7 @@ export const openai = hasAIConfig
   : null;
 
 // Use a lighter model for general text, and keep the vision-capable model for image tasks.
-export const textModel = openai?.chat("glm-4.5-air");
+export const textModel = openai?.chat("glm-4.5-flash");
 export const visionModel = openai?.chat("glm-4.5v");
 
 const perplexityApiKey = Bun.env.PERPLEXITY_API_KEY;
