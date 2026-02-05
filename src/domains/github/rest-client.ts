@@ -289,4 +289,167 @@ export class RestGithubClient implements GithubClient {
     );
     return data.map((repo) => ({ fullName: repo.full_name, private: repo.private }));
   }
+
+  async listBranches(params: {
+    owner: string;
+    repo: string;
+    perPage?: number;
+  }): Promise<Array<{ name: string }>> {
+    const perPage = params.perPage ?? 30;
+    const data = await this.request<Array<{ name: string }>>(
+      `/repos/${params.owner}/${params.repo}/branches?per_page=${perPage}`,
+    );
+    return data.map((branch) => ({ name: branch.name }));
+  }
+
+  async listCommits(params: {
+    owner: string;
+    repo: string;
+    ref?: string;
+    perPage?: number;
+  }): Promise<Array<{ sha: string; message: string; author?: string; url: string }>> {
+    const perPage = params.perPage ?? 10;
+    const refParam = params.ref ? `&sha=${encodeURIComponent(params.ref)}` : "";
+    const data = await this.request<
+      Array<{ sha: string; html_url: string; commit: { message: string; author?: { name?: string } } }>
+    >(`/repos/${params.owner}/${params.repo}/commits?per_page=${perPage}${refParam}`);
+    return data.map((commit) => ({
+      sha: commit.sha,
+      message: commit.commit?.message || "",
+      author: commit.commit?.author?.name,
+      url: commit.html_url,
+    }));
+  }
+
+  async getCommit(params: {
+    owner: string;
+    repo: string;
+    sha: string;
+  }): Promise<{ sha: string; message: string; author?: string; url: string }> {
+    const data = await this.request<{
+      sha: string;
+      html_url: string;
+      commit: { message: string; author?: { name?: string } };
+    }>(`/repos/${params.owner}/${params.repo}/commits/${params.sha}`);
+    return {
+      sha: data.sha,
+      message: data.commit?.message || "",
+      author: data.commit?.author?.name,
+      url: data.html_url,
+    };
+  }
+
+  async compareCommits(params: {
+    owner: string;
+    repo: string;
+    base: string;
+    head: string;
+  }): Promise<{
+    aheadBy: number;
+    behindBy: number;
+    totalCommits: number;
+    commits: Array<{ sha: string; message: string; author?: string; url: string }>;
+    files: Array<{ filename: string; status: string; additions: number; deletions: number; changes: number }>;
+  }> {
+    const data = await this.request<{
+      ahead_by: number;
+      behind_by: number;
+      total_commits: number;
+      commits: Array<{
+        sha: string;
+        html_url: string;
+        commit: { message: string; author?: { name?: string } };
+      }>;
+      files: Array<{ filename: string; status: string; additions: number; deletions: number; changes: number }>;
+    }>(`/repos/${params.owner}/${params.repo}/compare/${params.base}...${params.head}`);
+    return {
+      aheadBy: data.ahead_by,
+      behindBy: data.behind_by,
+      totalCommits: data.total_commits,
+      commits: (data.commits || []).map((commit) => ({
+        sha: commit.sha,
+        message: commit.commit?.message || "",
+        author: commit.commit?.author?.name,
+        url: commit.html_url,
+      })),
+      files: data.files || [],
+    };
+  }
+
+  async listPullRequests(params: {
+    owner: string;
+    repo: string;
+    state?: "open" | "closed" | "all";
+    perPage?: number;
+  }): Promise<Array<{ number: number; title: string; url: string; author?: string }>> {
+    const perPage = params.perPage ?? 10;
+    const state = params.state ?? "open";
+    const data = await this.request<
+      Array<{ number: number; html_url: string; title: string; user?: { login?: string } }>
+    >(`/repos/${params.owner}/${params.repo}/pulls?per_page=${perPage}&state=${state}`);
+    return data.map((pr) => ({
+      number: pr.number,
+      title: pr.title,
+      url: pr.html_url,
+      author: pr.user?.login,
+    }));
+  }
+
+  async updatePullRequestState(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    state: "open" | "closed";
+  }): Promise<{ url: string }> {
+    const data = await this.request<{ html_url: string }>(
+      `/repos/${params.owner}/${params.repo}/pulls/${params.number}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ state: params.state }),
+      },
+    );
+    return { url: data.html_url };
+  }
+
+  async listTags(params: {
+    owner: string;
+    repo: string;
+    perPage?: number;
+  }): Promise<Array<{ name: string; sha: string }>> {
+    const perPage = params.perPage ?? 30;
+    const data = await this.request<Array<{ name: string; commit: { sha: string } }>>(
+      `/repos/${params.owner}/${params.repo}/tags?per_page=${perPage}`,
+    );
+    return data.map((tag) => ({ name: tag.name, sha: tag.commit?.sha || "" }));
+  }
+
+  async createTag(params: {
+    owner: string;
+    repo: string;
+    tag: string;
+    sha: string;
+  }): Promise<void> {
+    await this.request(`/repos/${params.owner}/${params.repo}/git/refs`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ref: `refs/tags/${params.tag}`, sha: params.sha }),
+    });
+  }
+
+  async revertCommit(params: {
+    owner: string;
+    repo: string;
+    sha: string;
+  }): Promise<{ url: string }> {
+    const data = await this.request<{ html_url: string }>(
+      `/repos/${params.owner}/${params.repo}/commits/${params.sha}/revert`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      },
+    );
+    return { url: data.html_url };
+  }
 }

@@ -1,5 +1,6 @@
 import { Elysia, t } from "elysia";
 import { askAI } from "./index.js";
+import { detectGithubIntent } from "./intents/github.js";
 import { buildTodoistConnectedReply, buildTodoistHelpReply, buildTodoistTokenPrompt, isTodoistDisconnect, isTodoistHelp, parseTodoistTokenCommand } from "../todoist/commands.js";
 import { handleListReminders, handleCancelReminderCommand, createReminderFromAI, createFocusReminder } from "../reminders/service.js";
 import { handleNoteIntent } from "../notes/service.js";
@@ -9,6 +10,7 @@ import { formatTimeInTimezone } from "../../shared/utils/timezone.js";
 import { handleGithubIntent } from "../github/service.js";
 import { fetchGithubUsername } from "../github/auth.js";
 import { handleGmailIntent } from "../gmail/agent.js";
+import { splitRepo } from "../github/client.js";
 
 export function registerAiRoutes(app: Elysia) {
   return app.post(
@@ -104,12 +106,48 @@ export function registerAiRoutes(app: Elysia) {
         }
 
         if (sub === "repo") {
-          const repo = parts[2];
-          if (!repo) {
-            return { reply: "Usage: /github repo owner/name" };
+          const rawRepo = parts[2];
+          if (!rawRepo) {
+            if (!user?.githubToken) {
+              return { reply: "GitHub not connected. Use /github connect or /github token <PAT>." };
+            }
+            try {
+              const out = await handleGithubIntent({ user, intent: { action: "select_repo" } });
+              return { reply: out.reply, replyMarkup: out.replyMarkup };
+            } catch (err) {
+              console.error("GitHub repo select error:", err);
+              return { reply: "Failed to list repos. Check token permissions." };
+            }
           }
-          await setGithubRepo(userId, repo);
-          return { reply: `✅ Default repo set to ${repo}` };
+
+          try {
+            let owner: string;
+            let repoName: string;
+
+            if (rawRepo.includes("/")) {
+              // owner/name or full GitHub URL
+              const parsed = splitRepo(rawRepo);
+              owner = parsed.owner;
+              repoName = parsed.repo;
+            } else if (user?.githubUsername) {
+              // Infer owner from connected GitHub username
+              owner = user.githubUsername;
+              repoName = rawRepo.trim();
+            } else {
+              return {
+                reply:
+                  "Repo must be in owner/name format (e.g., /github repo owner/name). " +
+                  "You can also connect GitHub first so I can infer the owner.",
+              };
+            }
+
+            const normalized = `${owner.toLowerCase()}/${repoName.toLowerCase()}`;
+            await setGithubRepo(userId, normalized);
+            return { reply: `✅ Default repo set to ${normalized}` };
+          } catch (err) {
+            console.error("GitHub repo parse failed:", err);
+            return { reply: "Repo must be in owner/name format, e.g., /github repo owner/name" };
+          }
         }
 
         if (sub === "user") {
@@ -145,7 +183,24 @@ export function registerAiRoutes(app: Elysia) {
           };
         }
 
-        return { reply: "GitHub commands: /github connect | /github token <PAT> | /github repo owner/name | /github status | /github repos | /github user" };
+        const fallbackText = parts.slice(1).join(" ").trim();
+        if (fallbackText) {
+          try {
+            const fallbackIntent = await detectGithubIntent(fallbackText);
+            if (fallbackIntent) {
+              const out = await handleGithubIntent({ user, intent: fallbackIntent });
+              return { reply: out.reply, replyMarkup: out.replyMarkup };
+            }
+          } catch (error) {
+            console.error("GitHub fallback intent error:", error);
+          }
+        }
+
+        return {
+          reply:
+            "GitHub commands: /github connect | /github token <PAT> | /github repo owner/name | /github status | /github repos | /github user\n\n" +
+            "Tip: You can also say /github create an issue titled 'Bug' or /github comment on PR #123.",
+        };
       }
 
       // Handle Gmail commands and natural language (bypass AI intent detection)

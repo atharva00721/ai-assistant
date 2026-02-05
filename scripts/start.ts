@@ -97,7 +97,7 @@ async function startServer() {
 
     // Start the server
     console.log("Starting server...");
-    await import("../src/server.js");
+    await import("../src/server.ts");
   } catch (error) {
     console.error("Failed to start:", error);
     if (sql) await sql.end();

@@ -1,7 +1,6 @@
 import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { db } from "../../shared/db/index.js";
 import { userMemories, type UserMemory } from "../../shared/db/schema.js";
-import { queryMemories, upsertMemoryRecord } from "./pinecone-client.js";
 
 type MemoryMetadata = Record<string, unknown>;
 
@@ -28,11 +27,6 @@ export async function createMemory(params: {
 
     if (!memory) return null;
 
-    await upsertMemoryRecord(memory.id.toString(), params.userId, params.kind, memory.content, {
-      ...params.metadata,
-      importance: params.importance ?? 1,
-    });
-
     return memory;
   } catch (error) {
     console.error("Failed to create memory:", error);
@@ -46,34 +40,7 @@ export async function searchMemories(params: {
   kinds?: string[];
   topK?: number;
 }): Promise<UserMemory[]> {
-  try {
-    const matches = await queryMemories({
-      userId: params.userId,
-      query: params.query,
-      topK: params.topK ?? 8,
-      kinds: params.kinds,
-    });
-
-    if (matches.length === 0) {
-      return await fallbackSearchMemories(params);
-    }
-
-    const ids = matches.map((match) => Number(match.id)).filter((id) => Number.isFinite(id));
-    if (ids.length === 0) return [];
-
-    const rows = await db
-      .select()
-      .from(userMemories)
-      .where(inArray(userMemories.id, ids))
-      .orderBy(desc(userMemories.importance));
-
-    const scoreMap = new Map(matches.map((match) => [Number(match.id), match.score]));
-    const sorted = [...rows].sort((a, b) => (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0));
-    return sorted;
-  } catch (error) {
-    console.error("Failed to search memories:", error);
-    return await fallbackSearchMemories(params);
-  }
+  return await fallbackSearchMemories(params);
 }
 
 async function fallbackSearchMemories(params: {

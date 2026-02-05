@@ -16,7 +16,6 @@
     "test": "bun test",
     "test:reminder": "bun run scripts/test-reminder.ts",
     "test:search": "bun run scripts/test-search.ts",
-    "test:pinecone": "bun run scripts/test-pinecone.ts",
     "test:github": "bun run scripts/test-github.ts"
   },
   "devDependencies": {

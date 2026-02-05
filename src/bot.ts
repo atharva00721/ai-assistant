@@ -1,5 +1,7 @@
 import { Bot, webhookCallback } from "grammy";
 import { createUpdateDeduper } from "./telegram-dedupe.js";
+import { detectSearchIntent } from "./domains/ai/intents/search.js";
+import { hasSearch } from "./domains/ai/clients.js";
 
 const apiBaseUrl = Bun.env.API_BASE_URL || "http://localhost:3000";
 
@@ -95,6 +97,12 @@ export function getWebhookHandler() {
     if (!userId) return;
 
     try {
+      // For explicit web/search-style questions, send a quick heads-up so
+      // users know we're doing a slower web lookup.
+      if (hasSearch && detectSearchIntent(message)) {
+        await ctx.reply("🔍 Searching the web, this might take a few seconds...");
+      }
+
       const from = ctx.from;
       const response = await fetch(`${apiBaseUrl}/ask`, {
         method: "POST",
@@ -211,6 +219,17 @@ export function getWebhookHandler() {
         await ctx.answerCallbackQuery({ text: "Canceled" });
         await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
         await ctx.reply(data.reply || "Canceled.");
+      } else if (callbackData.startsWith("gh_repo_")) {
+        const actionId = parseInt(callbackData.split("_")[2] || "0");
+        const response = await fetch(`${apiBaseUrl}/github/repo/select`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ actionId, userId }),
+        });
+        const data = (await response.json()) as { reply?: string };
+        await ctx.answerCallbackQuery({ text: "Repo selected" });
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } });
+        await ctx.reply(data.reply || "Repo selected.");
       }
     } catch (error) {
       console.error("Error handling callback:", error);

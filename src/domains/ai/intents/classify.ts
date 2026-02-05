@@ -1,10 +1,6 @@
 import { generateText } from "ai";
 import { textModel } from "../clients.js";
 
-/**
- * Single global intent: which tool (or chat) should handle this message.
- * The AI chooses one; we then run only that tool's detector and handler.
- */
 export type GlobalIntent =
   | "note"
   | "habit"
@@ -17,6 +13,41 @@ export type GlobalIntent =
   | "github"
   | "job_digest"
   | "chat";
+
+/**
+ * Structured routing decision from the classifier.
+ * We keep "intent" as the single chosen tool, but also expose
+ * confidence + whether we should ask the user a clarifying question first.
+ */
+export interface GlobalRoutingDecision {
+  intent: GlobalIntent;
+  confidence: number;
+  needsClarification: boolean;
+  clarificationQuestion?: string | null;
+}
+
+const VALID_INTENTS: GlobalIntent[] = [
+  "note",
+  "habit",
+  "weather",
+  "search",
+  "focus_timer",
+  "reminder",
+  "todoist",
+  "gmail",
+  "github",
+  "job_digest",
+  "chat",
+];
+
+function normalizeJsonFromModel(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("```")) {
+    // Strip ``` or ```json fences if the model added them.
+    return trimmed.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+  }
+  return trimmed;
+}
 
 function getGlobalClassifyPrompt(options: {
   hasTodoist: boolean;
@@ -46,10 +77,12 @@ function getGlobalClassifyPrompt(options: {
     "job_digest - Morning JOB LIST (Twitter accounts to text for jobs): add/remove handles, show list, set time, enable/disable daily digest. Phrases: \"add @x to my job list\", \"morning job list\", \"send my job list at 9am\", \"who to text for jobs\", \"twitter accounts for job\".",
   );
 
-  tools.push(    "gmail - Read, search, send emails. Phrases: \"show my emails\", \"search emails\", \"send email to\", \"what emails did I get\", \"summarize emails\", \"inbox\"."
+  tools.push(
+    "gmail - Read, search, send emails. Phrases: \"show my emails\", \"search emails\", \"send email to\", \"what emails did I get\", \"summarize emails\", \"inbox\"."
   );
 
-  tools.push(    "github - GitHub actions: create issues, comment on PRs, assign reviewers, request changes, edit code and open PRs. Phrases: \"create an issue\", \"comment on PR\", \"assign reviewers\", \"request changes\", \"edit code in repo\".",
+  tools.push(
+    "github - GitHub actions: create issues, comment on PRs, assign reviewers, request changes, open/make/merge PRs, list/close/reopen PRs, list branches/commits, compare commits, list/create tags, set default repo, edit code. Phrases: \"create an issue\", \"comment on PR\", \"assign reviewers\", \"request changes\", \"make a PR\", \"merge PR\", \"list PRs\", \"close PR\", \"reopen PR\", \"list branches\", \"compare commits\", \"list tags\", \"create tag\", \"set repo\", \"edit code in repo\".",
   );
 
   tools.push(
@@ -75,49 +108,121 @@ Rules:
 - Read/search/send emails, check inbox, summarize emails → gmail.
 - Otherwise or unclear → chat.
 
-Reply with ONLY one word: note, habit, weather, search, focus_timer, reminder, ${hasTodoist ? "todoist, " : ""}gmail, github, job_digest, or chat. No explanation.
+Output format (MUST be valid JSON, no extra text):
+{
+  "intent": "note" | "habit" | "weather" | "search" | "focus_timer" | "reminder" | ${hasTodoist ? '"todoist" | ' : ""}"gmail" | "github" | "job_digest" | "chat",
+  "confidence": number,        // between 0 and 1
+  "needsClarification": boolean,
+  "clarificationQuestion": string | null
+}
+
+Guidance:
+- If you're reasonably sure (confidence >= 0.7), set needsClarification to false and clarificationQuestion to null.
+- If the message is ambiguous between multiple tools, or you feel less than 0.7 confident, set needsClarification to true and provide ONE short, direct clarification question (plain natural language, no quotes).
+- The clarification question should help you choose the right tool (e.g. "Do you want a one-time reminder or to add this to your task list?").
+
+Reply with ONLY the JSON object. No explanation, no markdown, no code fences.
 
 User message: `;
 }
 
 /**
- * Global classifier: AI picks which tool (or chat) handles the message.
- * Run once per message; then we only invoke that tool's detector.
+ * Global classifier: AI picks which tool (or chat) handles the message,
+ * and also returns confidence + whether to ask a clarification question.
+ */
+export async function classifyIntentDetailed(
+  message: string,
+  options: { hasTodoist: boolean; hasSearch: boolean },
+): Promise<GlobalRoutingDecision> {
+  // Safe fallback when the text model is not configured.
+  if (!textModel) {
+    return {
+      intent: "chat",
+      confidence: 0,
+      needsClarification: false,
+      clarificationQuestion: null,
+    };
+  }
+
+  try {
+    const { text } = await generateText({
+      model: textModel,
+      prompt: getGlobalClassifyPrompt(options) + message,
+      // Classification only needs a tiny JSON object, so we cap
+      // generation length to keep latency low and avoid rambly outputs.
+      maxTokens: 128,
+      temperature: 0,
+    });
+
+    const raw = normalizeJsonFromModel(text);
+    let parsed: Partial<GlobalRoutingDecision & { intent: string }> | null = null;
+
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = null;
+    }
+
+    if (!parsed || typeof parsed.intent !== "string") {
+      // Fallback: try to interpret the model output as a plain label like before.
+      const fallbackLabel = raw.trim().toLowerCase().replace(/\s+/g, " ").split(/[.,]/)[0];
+      const labelIsValid = VALID_INTENTS.includes(fallbackLabel as GlobalIntent);
+      const safeIntent: GlobalIntent = labelIsValid ? (fallbackLabel as GlobalIntent) : "chat";
+      return {
+        intent: safeIntent,
+        confidence: 0.5,
+        needsClarification: false,
+        clarificationQuestion: null,
+      };
+    }
+
+    let intent = parsed.intent.trim().toLowerCase() as GlobalIntent;
+    if (!VALID_INTENTS.includes(intent)) {
+      intent = "chat";
+    }
+
+    // Respect hasTodoist: if the classifier picks todoist but user has none, downgrade to chat.
+    if (intent === "todoist" && !options.hasTodoist) {
+      intent = "chat";
+    }
+
+    const confidenceRaw = typeof parsed.confidence === "number" ? parsed.confidence : 0.5;
+    const confidence = Math.max(0, Math.min(1, confidenceRaw));
+    const needsClarification =
+      typeof parsed.needsClarification === "boolean" ? parsed.needsClarification : false;
+    const clarificationQuestion =
+      parsed.clarificationQuestion && typeof parsed.clarificationQuestion === "string"
+        ? parsed.clarificationQuestion.trim() || null
+        : null;
+
+    return {
+      intent,
+      confidence,
+      needsClarification,
+      clarificationQuestion,
+    };
+  } catch (error) {
+    console.error("Intent classifier error:", error);
+    return {
+      intent: "chat",
+      confidence: 0,
+      needsClarification: false,
+      clarificationQuestion: null,
+    };
+  }
+}
+
+/**
+ * Backwards-compatible wrapper that returns only the intent label.
+ * Existing callers can keep using this while newer code can use
+ * classifyIntentDetailed for more nuance.
  */
 export async function classifyIntent(
   message: string,
   options: { hasTodoist: boolean; hasSearch: boolean },
 ): Promise<GlobalIntent> {
-  if (!textModel) return "chat";
-  try {
-    const { text } = await generateText({
-      model: textModel,
-      prompt: getGlobalClassifyPrompt(options) + message,
-    });
-    const label = text.trim().toLowerCase().replace(/\s+/g, " ").split(/[.,]/)[0];
-  const valid: GlobalIntent[] = [
-    "note",
-    "habit",
-    "weather",
-    "search",
-    "focus_timer",
-    "reminder",
-    "todoist",
-    "gmail",
-    "github",
-    "github",
-    "job_digest",
-    "chat",
-  ];
-    if (valid.includes(label as GlobalIntent)) {
-      if (label === "todoist" && !options.hasTodoist) return "chat";
-      return label as GlobalIntent;
-    }
-    return "chat";
-  } catch (error) {
-    console.error("Intent classifier error:", error);
-    return "chat";
-  }
+  const decision = await classifyIntentDetailed(message, options);
+  return decision.intent;
 }
 
 /** @deprecated Use classifyIntent instead. Kept for compatibility during migration. */

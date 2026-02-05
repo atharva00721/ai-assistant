@@ -109,6 +109,71 @@ export interface GithubClient {
   }): Promise<{ message: string }>;
 
   listRepos(params: { perPage?: number }): Promise<Array<{ fullName: string; private: boolean }>>;
+
+  listBranches(params: {
+    owner: string;
+    repo: string;
+    perPage?: number;
+  }): Promise<Array<{ name: string }>>;
+
+  listCommits(params: {
+    owner: string;
+    repo: string;
+    ref?: string;
+    perPage?: number;
+  }): Promise<Array<{ sha: string; message: string; author?: string; url: string }>>;
+
+  getCommit(params: {
+    owner: string;
+    repo: string;
+    sha: string;
+  }): Promise<{ sha: string; message: string; author?: string; url: string }>;
+
+  compareCommits(params: {
+    owner: string;
+    repo: string;
+    base: string;
+    head: string;
+  }): Promise<{
+    aheadBy: number;
+    behindBy: number;
+    totalCommits: number;
+    commits: Array<{ sha: string; message: string; author?: string; url: string }>;
+    files: Array<{ filename: string; status: string; additions: number; deletions: number; changes: number }>;
+  }>;
+
+  listPullRequests(params: {
+    owner: string;
+    repo: string;
+    state?: "open" | "closed" | "all";
+    perPage?: number;
+  }): Promise<Array<{ number: number; title: string; url: string; author?: string }>>;
+
+  updatePullRequestState(params: {
+    owner: string;
+    repo: string;
+    number: number;
+    state: "open" | "closed";
+  }): Promise<{ url: string }>;
+
+  listTags(params: {
+    owner: string;
+    repo: string;
+    perPage?: number;
+  }): Promise<Array<{ name: string; sha: string }>>;
+
+  createTag(params: {
+    owner: string;
+    repo: string;
+    tag: string;
+    sha: string;
+  }): Promise<void>;
+
+  revertCommit(params: {
+    owner: string;
+    repo: string;
+    sha: string;
+  }): Promise<{ url: string }>;
 }
 
 export function splitRepo(repo: string): { owner: string; repo: string } {
