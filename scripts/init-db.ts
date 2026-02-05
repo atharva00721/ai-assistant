@@ -59,6 +59,22 @@ async function initDatabase() {
       );
     `);
 
+    console.log("Creating gmail_accounts table...");
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS gmail_accounts (
+        id SERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL UNIQUE,
+        email TEXT NOT NULL,
+        access_token TEXT NOT NULL,
+        refresh_token TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        scope TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+
     console.log("Database initialized successfully!");
     process.exit(0);
   } catch (error) {

@@ -3,6 +3,8 @@
  * Complete control over Todoist with all API features
  */
 
+import type { HeadersInit } from "bun";
+
 const TODOIST_API_BASE = "https://api.todoist.com/rest/v2";
 
 interface TodoistTask {
@@ -101,7 +103,7 @@ export class TodoistClient {
       return {} as T;
     }
 
-    return await response.json();
+    return await response.json() as T;
   }
 
   async getTasks(params?: {

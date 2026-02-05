@@ -14,6 +14,7 @@ import { detectReminderIntent } from "./intents/reminder.js";
 import { detectJobDigestIntent } from "./intents/job-digest.js";
 import { detectGithubIntent, type GithubIntent } from "./intents/github.js";
 import { classifyIntentDetailed } from "./intents/classify.js";
+import { handleGmailIntent } from "../gmail/agent.js";
 import {
   getMorningJobDigestState,
   addHandleToMorningJobDigest,
@@ -278,6 +279,13 @@ export async function askAI(
         }
       }
       break;
+    case "gmail": {
+      const gmailResult = await handleGmailIntent(trimmedMessage, userId);
+      if (gmailResult.isGmailIntent && gmailResult.reply) {
+        return { text: gmailResult.reply };
+      }
+      break;
+    }
     case "github": {
       const githubIntent = await detectGithubIntent(trimmedMessage);
       if (githubIntent) return { github: githubIntent };

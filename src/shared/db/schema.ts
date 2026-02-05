@@ -72,6 +72,18 @@ export const pendingActions = pgTable("pending_actions", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+export const gmailAccounts = pgTable("gmail_accounts", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  email: text("email").notNull(),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  scope: text("scope").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Reminder = typeof reminders.$inferSelect;
@@ -86,3 +98,5 @@ export type UserAutomation = typeof userAutomations.$inferSelect;
 export type NewUserAutomation = typeof userAutomations.$inferInsert;
 export type PendingAction = typeof pendingActions.$inferSelect;
 export type NewPendingAction = typeof pendingActions.$inferInsert;
+export type GmailAccount = typeof gmailAccounts.$inferSelect;
+export type NewGmailAccount = typeof gmailAccounts.$inferInsert;

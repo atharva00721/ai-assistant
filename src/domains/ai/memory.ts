@@ -10,11 +10,9 @@ export async function loadMemoryContext(params: {
   query: string;
   topK?: number;
 }) {
-  const memories = await searchMemories({
-    userId: params.userId,
-    query: params.query,
-    topK: params.topK ?? 8,
-  });
+  // Temporarily disable memory search for faster responses
+  console.log("Memory search disabled for performance");
+  const memories: { kind: string; content: string }[] = [];
   const memoryContext = formatMemoryContext(memories);
   return { memories, memoryContext };
 }

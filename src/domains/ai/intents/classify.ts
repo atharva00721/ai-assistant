@@ -9,6 +9,7 @@ export type GlobalIntent =
   | "focus_timer"
   | "reminder"
   | "todoist"
+  | "gmail"
   | "github"
   | "job_digest"
   | "chat";
@@ -33,6 +34,7 @@ const VALID_INTENTS: GlobalIntent[] = [
   "focus_timer",
   "reminder",
   "todoist",
+  "gmail",
   "github",
   "job_digest",
   "chat",
@@ -76,6 +78,10 @@ function getGlobalClassifyPrompt(options: {
   );
 
   tools.push(
+    "gmail - Read, search, send emails. Phrases: \"show my emails\", \"search emails\", \"send email to\", \"what emails did I get\", \"summarize emails\", \"inbox\"."
+  );
+
+  tools.push(
     "github - GitHub actions: create issues, comment on PRs, assign reviewers, request changes, open/make/merge PRs, list/close/reopen PRs, list branches/commits, compare commits, list/create tags, set default repo, edit code. Phrases: \"create an issue\", \"comment on PR\", \"assign reviewers\", \"request changes\", \"make a PR\", \"merge PR\", \"list PRs\", \"close PR\", \"reopen PR\", \"list branches\", \"compare commits\", \"list tags\", \"create tag\", \"set repo\", \"edit code in repo\".",
   );
 
@@ -98,11 +104,13 @@ Rules:
 - "Weather in X" / "will it rain" → weather.
 - "Search for X" / "look up X" / "latest on X" → search.
 - Add/show/set morning job list, Twitter accounts to text for jobs → job_digest.
+- Create issues, comment on PRs, assign reviewers, request changes, edit code → github.
+- Read/search/send emails, check inbox, summarize emails → gmail.
 - Otherwise or unclear → chat.
 
 Output format (MUST be valid JSON, no extra text):
 {
-  "intent": "note" | "habit" | "weather" | "search" | "focus_timer" | "reminder" | ${hasTodoist ? '"todoist" | ' : ""}"github" | "job_digest" | "chat",
+  "intent": "note" | "habit" | "weather" | "search" | "focus_timer" | "reminder" | ${hasTodoist ? '"todoist" | ' : ""}"gmail" | "github" | "job_digest" | "chat",
   "confidence": number,        // between 0 and 1
   "needsClarification": boolean,
   "clarificationQuestion": string | null
